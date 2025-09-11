@@ -1,0 +1,23 @@
+# Secrets & Environment Variables
+.env
+.env.local
+.env.production
+*.key
+*.pem
+
+# Dependencies (large folders)
+node_modules/
+venv/
+target/
+
+# Build outputs
+build/
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files (optional - some prefer to track these)
+.vscode/
+.idea/
