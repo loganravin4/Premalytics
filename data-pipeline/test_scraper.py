@@ -13,22 +13,22 @@ def test_scraper_initialization():
         scraper = FBRefScraper()
         
         # Check that basic properties were set correctly
-        print(f"✓ Scraper created successfully")
-        print(f"✓ Base URL: {scraper.base_url}")
-        print(f"✓ Min delay: {scraper.min_delay} seconds")
-        print(f"✓ User-Agent: {scraper.session.headers.get('User-Agent')}")
+        print(f" Scraper created successfully")
+        print(f" Base URL: {scraper.base_url}")
+        print(f" Min delay: {scraper.min_delay} seconds")
+        print(f" User-Agent: {scraper.session.headers.get('User-Agent')}")
         
         # Test the rate limiting function (should do nothing on first call)
         print("Testing rate limiter...")
         scraper._rate_limit()
-        print("✓ Rate limiter works")
+        print(" Rate limiter works")
         
-        print("\n🎉 All basic tests passed!")
+        print("\nAll basic tests passed!")
         return scraper
         
     except Exception as e:
         # If anything goes wrong, print the error
-        print(f"❌ Error creating scraper: {e}")
+        print(f"Error creating scraper: {e}")
         return None
 
 def test_web_request(scraper):
@@ -42,207 +42,34 @@ def test_web_request(scraper):
     team_name = "Liverpool"
     
     # Try to fetch the page
-    result = scraper.test_connection(team_id, team_name)
+    result = scraper.test_connection_urllib(team_id, team_name)
     
     # Check what we got back
     if result['success']:
-        print("✓ Successfully fetched Liverpool's page!")
-        print(f"✓ Status code: {result['status_code']}")
-        print(f"✓ Content length: {result['content_length']} bytes")
-        print(f"✓ URL: {result['url']}")
-        print("\nFirst 200 characters of page:")
-        print("-" * 50)
-        print(result['content_preview'][:200])
-        print("-" * 50)
+        print(" Successfully fetched Liverpool's page!")
+        print(f" Status code: {result['status_code']}")
+        print(f" Content length: {result['content_length']} bytes")
         return True
     else:
-        print(f"❌ Failed to fetch page: {result['error']}")
+        print(f"Failed to fetch page: {result['error']}")
         return False
 
-def test_homepage_access(scraper):
-    """
-    Test accessing FBRef's homepage first to see if our headers work
-    """
-    print("\nTesting homepage access...")
-    
-    # Try to access just the homepage first
-    homepage_url = "https://fbref.com"
-    
-    try:
-        # Apply rate limiting
-        scraper._rate_limit()
-        
-        # Log what we're doing
-        scraper.logger.info(f"Testing homepage access: {homepage_url}")
-        
-        # Make the request to homepage
-        response = scraper.session.get(homepage_url, timeout=30)
-        
-        # Check if successful
-        response.raise_for_status()
-        
-        print("✓ Successfully accessed FBRef homepage!")
-        print(f"✓ Status code: {response.status_code}")
-        print(f"✓ Content length: {len(response.text)} bytes")
-        
-        # Look for key elements to confirm we got the real page
-        if "Premier League" in response.text:
-            print("✓ Found Premier League content - looks like real FBRef page")
-        else:
-            print("⚠ Didn't find expected content - might be blocked")
-            
-        return True
-        
-    except Exception as e:
-        print(f"❌ Failed to access homepage: {e}")
-        return False
-
-def test_simple_team_page(scraper):
-    """
-    Test accessing a team page without the specific season/competition path
-    """
-    print("\nTesting simpler team URL...")
-    
-    # Try a simpler URL structure first
-    simple_url = "https://fbref.com/en/squads/822bd0ba/Liverpool-Stats"
-    
-    try:
-        # Apply rate limiting
-        scraper._rate_limit()
-        
-        # Log what we're doing
-        scraper.logger.info(f"Testing simple team URL: {simple_url}")
-        
-        # Make the request
-        response = scraper.session.get(simple_url, timeout=30)
-        
-        # Check if successful
-        response.raise_for_status()
-        
-        print("✓ Successfully accessed simple Liverpool page!")
-        print(f"✓ Status code: {response.status_code}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Failed to access simple team page: {e}")
-        return False
-
-def test_urllib_approach(scraper):
-    """
-    Test using urllib instead of requests
-    """
-    print("\nTesting urllib approach...")
-    
-    # Liverpool's team info
-    team_id = "822bd0ba"
-    team_name = "Liverpool"
-    
-    # Try the urllib version
-    result = scraper.test_connection_urllib(team_id, team_name)
-    
-    # Check results
-    if result['success']:
-        print("Success with urllib!")
-        print(f"Status code: {result['status_code']}")
-        print(f"Content length: {result['content_length']} bytes")
-        print("\nFirst 200 characters:")
-        print("-" * 50)
-        print(result['content_preview'][:200])
-        print("-" * 50)
-        return True
-    else:
-        print(f"urllib also failed: {result['error']}")
-        return False
-
-def test_liverpool_scraping(scraper):
-    """
-    Test scraping Liverpool's stats
-    """
-
-    result = scraper.scrape_liverpool_stats()
-
-    # Check if the result is successful
-    if result['success']:
-        if result.get('table_found'):
-            # Print the player count
-            print(f"Found {result['player_count']} player rows")
-            return True
-        else:
-            # Print the available IDs
-            print(f"No table found, available IDs: {result['available_ids']}")
-            return False
-    else:
-        # Print the error
-        print(f"Failed to scrape Liverpool's stats: {result['error']}")
-        return False
-
-def test_parse_player_data(scraper):
-    """
-    Turn parsed player data into structured data
-    """
-
-    team_id = "822bd0ba"
-    team_name = "Liverpool"
-
-    result = scraper.parse_player_stats(team_id, team_name)
-
-    # Check if the result is successful
-    if result['success']:
-        # Print the player count
-        print(f"Found {result['player_count']} players")
-        print(f"Columns found: {len(result['headers'])}")
-        print("First few columns: {result['headers'][:8]}")
-
-        # Print the first player
-        if result['players']:
-            first_player = result['players'][0]
-            print("\nFirst player data:")
-            print(f"Name: {first_player.get('player', 'Unknown')}")
-            print(f"Position: {first_player.get('position', 'Unknown')}")
-            print(f"Goals: {first_player.get('goals', '0')}")
-            print(f"Assists: {first_player.get('assists', '0')}")
-
-        return True
-    else:
-        # Print the error
-        print(f"Failed to parse player data: {result['error']}")
-        return False
-
-def debug_table_parsing(scraper):
-    """
-    Debug why we're not finding player data
-    """
-    print("\nDebugging table structure...")
-    
-    team_id = "822bd0ba"
-    team_name = "Liverpool"
-    
-    result = scraper.debug_table_structure(team_id, team_name)
-    
-    if result['success']:
-        print("Debug completed - check output above")
-        return True
-    else:
-        print(f"Debug failed: {result['error']}")
-        return False
-
-def test_save_to_csv(scraper):
+def test_save_to_csv(scraper, team_data):
     """
     Test saving player data to a CSV file
     """
 
     print("\nTesting save to CSV...")
 
-    # Get player data
-    team_id = "822bd0ba"
-    team_name = "Liverpool"
+    # Get player data if no team data is provided
+    if not team_data:
+        team_id = "822bd0ba"
+        team_name = "Liverpool"
+        team_data = scraper.parse_player_stats(team_id, team_name)
 
-    result = scraper.parse_player_stats(team_id, team_name)
-
-    # Check if the result is successful
-    if result['success']:
+    if team_data and team_data.get('success'):
         # Save to CSV
-        save_result = scraper.save_to_csv(result)
+        save_result = scraper.save_to_csv(team_data)        
 
         # Check if the save is successful
         if save_result['success']:
@@ -253,27 +80,128 @@ def test_save_to_csv(scraper):
         else:
             print(f"Failed to save to CSV: {save_result['error']}")
             return False
-
     else:
         print("Cannot save - no player data available")
         return False
+
+def test_team_discovery(scraper):
+    """
+    Test the team discovery functionality with some known teams
+    """
+    print("\nTesting team discovery...")
+
+    # Test teams we want to find
+    test_teams = ["Liverpool", "Arsenal", "Manchester City"]
+
+    discovered_teams = {}
+
+    for team_name in test_teams:
+        print(f"Testing team: {team_name}")
+
+        result = scraper.discover_team_id(team_name)
+
+        if result['success']:
+            print(f"Found {team_name}:")
+            print(f"    Team ID: {result['team_id']}")
+            print(f"    FBRef Name: {result['fbref_name']}")
+            discovered_teams[team_name.lower().replace(" ", "_")] = {
+                "id": result['team_id'],
+                "name": result['fbref_name'],
+                "official_name": team_name,
+            }
+        else:
+            print(f"Failed to find {team_name}: {result['error']}")
+
+    return discovered_teams
+
+def test_generic_team_scraping(scraper, team_data):
+    """
+    Test scraping any team's data
+    """
+
+    print(f"\nTesting scraping for {team_data['official_name']}...")
+
+    result = scraper.parse_player_stats(team_data['id'], team_data['name'])
+
+    if result['success']:
+        print(f"Successfully scraped {team_data['official_name']}")
+        print(f"    Players found: {result['player_count']}")
+        print(f"    Columns: {len(result['headers'])}")
+
+        # Show sample data
+        if result['players']:
+            first_player = result['players'][0]
+            print(f"    Sample player: {first_player.get('player', 'Unknown')}")
+
+        # Test CSV saving with this data
+        save_result = scraper.save_to_csv(result)
+        if save_result['success']:
+            print(f"    Saved to: {save_result['filename']}")
+            return result
+        else:
+            print(f"Failed to save to CSV: {save_result['error']}")
+            return None
+    else:
+        print(f"Failed to scrape {team_data['official_name']}: {result['error']}")
+        return None
+
+def test_multi_team_scraping(scraper):
+    """
+    Test scraping multiple teams in parallel
+    """
+
+    print(f"\nTesting scraping all Premier League teams in parallel...")
+
+    # Discover all Premier League teams
+    discovery_result = scraper.discover_all_premier_league_teams()
+
+    if discovery_result['success']:
+        teams = discovery_result['teams']
+        print(f"Discovered {len(teams)} teams")
+
+        # Scrape a limited number of teams
+        scrape_result = scraper.scrape_multiple_teams(teams)
+
+        if scrape_result['success']:
+            print(f"Multi-team scraping complete:")
+            print(f"    Successful: {scrape_result['successful_teams']}")
+            print(f"    Failed: {scrape_result['failed_teams']}")
+
+            # Show successful teams
+            for team_key, result in scrape_result['results'].items():
+                if result['success']:
+                    print(f"    {team_key}: {result['players']} players -> {result['csv_file']}")
+
+            return True
+        else:
+            print(f"Failed to scrape multiple teams: {scrape_result['error']}")
+    else:
+        print(f"Failed to discover teams: {discovery_result['error']}")
+    return False
 
 if __name__ == "__main__":
     scraper = test_scraper_initialization()
     
     if scraper:
-        urllib_success = test_urllib_approach(scraper)
+        # Test individual team discovery (what you just ran)
+        discovered_teams = test_team_discovery(scraper)
         
-        if urllib_success:
-            parsing_success = test_parse_player_data(scraper)
+        if discovered_teams:
+            # Test scraping first discovered team
+            first_team = discovered_teams[list(discovered_teams.keys())[0]]
+            scraped_data = test_generic_team_scraping(scraper, first_team)
             
-            if parsing_success:
-                print("\n🎉 Scraper working! Now saving to CSV...")
-                csv_success = test_save_to_csv(scraper)
+            if scraped_data:
+                print("\n" + "="*50)
+                print("PHASE 2B: SCALING TO MULTIPLE TEAMS")
+                print("="*50)
                 
-                if csv_success:
-                    print("\n✅ Phase 2A Complete: Liverpool data successfully scraped and saved!")
-                    print("Next steps:")
-                    print("- Examine the CSV file")
-                    print("- Design database schema based on real data")
-                    print("- Expand to scrape all 20 Premier League teams")
+                # Test multi-team scraping
+                multi_success = test_multi_team_scraping(scraper)
+                
+                if multi_success:
+                    print("\n Phase 2 Complete!")
+                    print("Ready for:")
+                    print("- Database schema design (Phase 3)")
+                    print("- Full 20-team scraping")
+                    print("- ML model development")

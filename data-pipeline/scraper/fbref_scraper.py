@@ -67,9 +67,10 @@ class FBRefScraper:
             level=logging.INFO, # Log at INFO level and above
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', # Format of log messages
             handlers=[
-                logging.FileHandler('scraper.log'), # Log to a file
+                logging.FileHandler('scraper.log', encoding='utf-8'), # Log to a file
                 logging.StreamHandler(), # Log to the console
-            ]
+            ],
+            force=True # Force reconfiguration of logging
         )
 
         # Create a logger for this class
@@ -96,101 +97,6 @@ class FBRefScraper:
 
         # Update the last request time
         self.last_request = time.time()
-
-    def test_connection(self, team_id: str, team_name: str, season: str = "2025-2026"):
-        """
-        Test that we can connect to FBRef
-        """
-
-        # Get Liverpool's Premier League stats
-        url = f"{self.base_url}/en/squads/{team_id}/{season}/c9/{team_name}-Stats-Premier-League"
-
-        # Log the URL we're trying to access
-        self.logger.info(f"Testing connection to: {url}")
-
-        try:
-            # Apply rate limit
-            self._rate_limit()
-
-            # Make the request
-            response = self.session.get(url, timeout=30)
-
-            # Check if the request was successful
-            response.raise_for_status()
-
-            # Log the response status
-            self.logger.info(f"Response status: {response.status_code}")
-            self.logger.info(f"Content length: {len(response.text)} bytes")
-            self.logger.info(f"Successfully connected to FBRef")
-
-            # Return the response
-            return {
-                "success": True,
-                "url": url,
-                "status_code": response.status_code,
-                "content_length": len(response.text),
-                "content_preview": response.text[:500],
-            }
-        
-        except requests.exceptions.Timeout:
-            # Handle timeout error
-            self.logger.error(f"Timeout after 30 seconds while accessing {url}")
-            return { "success": False, "error": "Timeout" }
-
-        except requests.exceptions.ConnectionError:
-            # Handle connection error
-            self.logger.error(f"Connection error while accessing {url}, check your internet connection")
-            return { "success": False, "error": "ConnectionError" }
-
-        except requests.exceptions.HTTPError as e:
-            # Handle HTTP error
-            self.logger.error(f"HTTP error while accessing {url}: {e}")
-            return { "success": False, "error": f"HTTPError: {e}" }
-
-        except Exception as e:
-            # Handle other errors
-            self.logger.error(f"Unexpected error while accessing {url}: {e}")
-            return { "success": False, "error": f"UnexpectedError: {e}" }
-
-    def test_connection_with_referrer(self, team_id: str, team_name: str, season: str = "2025-2026"):
-        """
-        Test connection with additional headers that simulate coming from Google
-        """
-        # Build the URL
-        url = f"{self.base_url}/en/squads/{team_id}/{season}/c9/{team_name}-Stats-Premier-League"
-        
-        # Add extra headers for this specific request
-        extra_headers = {
-            'Referer': 'https://www.google.com/',  # Pretend we came from Google
-            'Sec-Fetch-User': '?1',  # Indicates user-initiated navigation
-            'Sec-Ch-Ua': '"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"Windows"',
-        }
-        
-        try:
-            # Apply rate limiting
-            self._rate_limit()
-            
-            # Log the attempt
-            self.logger.info(f"Testing with referrer headers: {url}")
-            
-            # Make request with additional headers
-            response = self.session.get(url, headers=extra_headers, timeout=30)
-            response.raise_for_status()
-            
-            self.logger.info("Success with referrer headers!")
-            return {
-                'success': True,
-                'url': url,
-                'status_code': response.status_code,
-                'content_length': len(response.text),
-                'content_preview': response.text[:200]
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Failed with referrer headers: {e}")
-            return {'success': False, 'error': str(e)}
 
     def test_connection_urllib(self, team_id: str, team_name: str, season: str = "2025-2026"):
         """
@@ -270,67 +176,241 @@ class FBRefScraper:
             self.logger.error(f"urllib unexpected error: {e}")
             return {'success': False, 'error': f'Unexpected: {e}'}
 
-    def scrape_liverpool_stats(self):
+    def discover_team_id(self, team_search_name: str, season: str = "2025-2026"):
         """
-        Scrape Liverpool's player stats and parse HTML to get the data we need
+        Find a team's FBRef ID by searching the Premier League team page
         """
 
-        # Build the URL
-        team_id = "822bd0ba"
-        team_name = "Liverpool"
+        try:
+            # Apply rate limiting
+            self._rate_limit()
 
-        # Get the HTML content
-        response = self.test_connection_urllib(team_id, team_name)
+            # Try the Premier League stats page to find team links
+            standings_url = f"{self.base_url}/en/comps/9/{season}/{season}-Premier-League-Stats"
 
-        # Check if the response is successful
-        if not response['success']:
-            # Return error
-            return { "success": False, "error": response['error'] }
+            # Log what we're attempting
+            self.logger.info(f"Searching for team ID for: {team_search_name}")
+            self.logger.info(f"Checking standings page: {standings_url}")
 
-        try: 
-            # Parse the HTML content
-            soup = BeautifulSoup(response['content_preview'], 'html.parser') # First 500 characters
+            # Make request with urllib
+            request = urllib.request.Request(standings_url)
+            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
 
-            # Get the full page content
-            url = response['url']
+            with urllib.request.urlopen(request, timeout=30) as response:
+                html_content = response.read().decode('utf-8')
+
+            # Parse with BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+
+            # Find all team links on the page
+            team_links = soup.find_all('a', href=True)
+
+            # Search through all links for team matches
+            for link in team_links:
+                href = link.get('href', '')
+                text = link.get_text(strip=True)
+
+                # Check if this looks like a team stats page link
+                if "/squads/" in href and team_search_name.lower() in text.lower():
+                    # Extract the team ID from the URL
+                    team_id = href.split('/squads/')[1].split('/')[0]
+
+                    # Log success
+                    self.logger.info(f"Found team ID {team_id} for {team_search_name}")
+                    
+                    # Test if this team ID actually works
+                    test_result = self.test_team_id(team_id, text, season)
+
+                    if test_result['success']:
+                        return {
+                            "success": True,
+                            "team_id": team_id,
+                            "team_name": text,
+                            "fbref_name": self._extract_fbref_name_from_url(href)
+                        }
+            # If no match found, return failure
+            self.logger.warning(f"No team ID found for {team_search_name}")
+            return { "success": False, "error": f"No team ID found for {team_search_name}" }
+        
+        except Exception as e:
+            # Handle any other errors
+            self.logger.error(f"Unexpected error discovering team ID for {team_search_name}: {e}")
+            return { "success": False, "error": str(e) }
+
+    def test_team_id(self, team_id: str, team_name: str, season: str = "2025-2026"):
+        """
+        Test if a team ID actually works by trying to access the team's stats page
+        """
+
+        try:
+            # Apply rate limiting
+            self._rate_limit()
+
+            # Clean the team name to match FBRef's format
+            clean_name = team_name.replace(" ", "-").replace("&", "").replace(".", "")
+
+            # Build the URL
+            url = f"{self.base_url}/en/squads/{team_id}/{season}/c9/{clean_name}-Stats-Premier-League"
+
+            # Make request with urllib
             request = urllib.request.Request(url)
             request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
 
-            # Make the request
-            with urllib.request.urlopen(request, timeout=30) as full_response:
-                # Read the response content
-                full_content = full_response.read().decode('utf-8')
-
-            # Parse the full HTML content
-            full_soup = BeautifulSoup(full_content, 'html.parser')
-
-            # Find the table with the stats
-            stats_table = full_soup.find('table', {'id': 'stats_standard_9'})
-
-            if stats_table:
-                # Log that we found the table
-                self.logger.info("Found the stats table")
-
-                # Count how many player rows there are
-                player_rows = stats_table.find('tbody').find_all('tr')
-                self.logger.info(f"Found {len(player_rows)} player rows")
-                return { "success": True, "table_found": True, "player_count": len(player_rows) }
-
-            else:
-                # Log that we didn't find the table
-                self.logger.warning("No stats table found with id 'stats_standard_9'")
-
-                # Check for alternative table IDs
-                all_tables = full_soup.find_all('table')
-                table_ids = [table.get('id') for table in all_tables if table.get('id')]
-                self.logger.info(f"Available table IDs: {table_ids}")
-                return { "success": True, "table_found": False, "available_ids": table_ids }
+            with urllib.request.urlopen(request, timeout=30) as response:
+                if response.status == 200:
+                    self.logger.info(f"Confirmed working team ID: {team_id} for {team_name}")
+                    return { "success": True, "url": url }
+                else:
+                    return { "success": False, "error": f"Got status code {response.status} for {url}" }
 
         except Exception as e:
             # Handle any other errors
-            self.logger.error(f"Unexpected error: {e}")
-            return { "success": False, "error": f"Parsing error: {e}" }
+            self.logger.error(f"Unexpected error testing team ID {team_id} for {team_name}: {e}")
+            return { "success": False, "error": str(e) }
 
+    def _extract_fbref_name_from_url(self, url: str):
+        """
+        Extract the FBRef name from a URL
+        """
+
+        try:
+            # Split by '/' and look for the team name part
+            parts = url.split('/')
+            for part in parts:
+                if "-Stats" in part:
+                    return part.replace("-Stats", "")
+            # If no match found, return the part after the team ID
+            if "squads" in url:
+                squad_parts = url.split('/squads/')[1].split('/')
+                if len(squad_parts) >= 3:
+                    return squad_parts[2].replace("-Stats", "")
+        except:
+            pass
+        return ""
+
+    def discover_all_premier_league_teams(self, season: str = "2025-2026"):
+        """
+        Discover Premier League teams using only structural patterns, no hardcoded lists
+        """
+        try:
+            # Apply rate limiting
+            self._rate_limit()
+
+            # Get the broader Premier League stats page
+            stats_url = f"{self.base_url}/en/comps/9/{season}/{season}-Premier-League-Stats"
+            
+            self.logger.info(f"Discovering Premier League teams from: {stats_url}")
+
+            # Make request with urllib
+            request = urllib.request.Request(stats_url)
+            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+
+            with urllib.request.urlopen(request, timeout=30) as response:
+                html_content = response.read().decode('utf-8')
+
+            # Parse with BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+            teams = {}
+
+            # Find all squad links
+            all_links = soup.find_all('a', href=True)
+            
+            for link in all_links:
+                href = link.get('href', '')
+                text = link.get_text(strip=True)
+                
+                # Only process squad links that look valid
+                if ('/squads/' in href and text and len(text) > 2):
+                    
+                    team_id = href.split('/squads/')[1].split('/')[0]
+                    
+                    # Only process if we have a valid 8-character team ID
+                    if len(team_id) == 8:
+                        # Skip obvious non-team entries
+                        skip_patterns = ['vs ', '(M)', '(F)', 'Stats', 'Squad', 'Table', 'Clubs', '...']
+                        if any(pattern in text for pattern in skip_patterns):
+                            continue
+                        
+                        team_key = text.lower().replace(' ', '_').replace('-', '_')
+                        
+                        # Avoid duplicates
+                        if team_key not in teams:
+                            teams[team_key] = {
+                                "id": team_id,
+                                "name": text.replace(' ', '-'),
+                                "official_name": text,
+                            }
+            
+            # If we got way too many teams, take the first 20 alphabetically
+            if len(teams) > 25:
+                self.logger.info(f"Found {len(teams)} teams - filtering to likely Premier League teams")
+                # Sort alphabetically and take first 20
+                sorted_teams = dict(sorted(teams.items())[:20])
+                teams = sorted_teams
+            
+            # Log what we found
+            for team_key, team_data in teams.items():
+                self.logger.info(f"Found team: {team_data['official_name']} (ID: {team_data['id']})")
+            
+            self.logger.info(f"Successfully discovered {len(teams)} teams")
+            return {"success": True, "teams": teams}
+
+        except Exception as e:
+            self.logger.error(f"Error discovering Premier League teams: {e}")
+            return {"success": False, "error": str(e)}
+
+    def scrape_multiple_teams(self, teams: Dict):
+        """
+        Scrape multiple teams in parallel with progress tracking
+        """
+
+        results = {}
+        successful_teams = 0
+        failed_teams = 0
+
+        # Get all teams
+        team_items = list(teams.items())    
+
+        self.logger.info(f"Scraping {len(team_items)} teams in parallel")
+
+        for team_key, team_info in team_items:
+            try:
+                self.logger.info(f"Scraping {team_info['official_name']}")
+
+                # Scrape the team
+                result = self.parse_player_stats(team_info['id'], team_info['name'])
+
+                if result['success']:
+                    # Save to CSV
+                    save_result = self.save_to_csv(result)
+
+                    if save_result['success']:
+                        results[team_key] = {
+                            "success": True,
+                            "players": result["player_count"],
+                            "csv_file": save_result["file_path"],
+                        }
+
+                        successful_teams += 1
+                        self.logger.info(f" {team_info['official_name']}: {result['player_count']} players saved")
+                    else:
+                        results[team_key] = { "success": False, "error": save_result["error"] }
+                        failed_teams += 1
+                else:
+                    results[team_key] = { "success": False, "error": result["error"] }
+                    failed_teams += 1
+            except Exception as e:
+                results[team_key] = { "success": False, "error": str(e) }
+                failed_teams += 1
+        
+        return {
+            "success": True,
+            "total_teams": len(team_items),
+            "successful_teams": successful_teams,
+            "failed_teams": failed_teams,
+            "results": results,
+        }
+            
     def parse_player_stats(self, team_id: str, team_name: str, season: str = "2025-2026"):
         """
         Extract actual player statistics in a structured format to export to a CSV file
@@ -448,80 +528,6 @@ class FBRefScraper:
             # Handle any other errors
             self.logger.error(f"Unexpected error parsing player stats: {e}")
             return { "success": False, "error": str(e) }
-
-    def debug_table_structure(self, team_id: str, team_name: str, season: str = "2025-2026"):
-        """
-        Debug method to examine the actual HTML table structure
-        This will help us understand why we're not finding player data
-        """
-        # Build URL and get content (same as before)
-        url = f"{self.base_url}/en/squads/{team_id}/{season}/c9/{team_name}-Stats-Premier-League"
-        
-        try:
-            # Apply rate limiting
-            self._rate_limit()
-
-            # Log what we're doing
-            self.logger.info(f"Parsing player stats from: {url}")
-            
-            # Make the request
-            request = urllib.request.Request(url)
-            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
-            
-            with urllib.request.urlopen(request, timeout=30) as response:
-                html_content = response.read().decode('utf-8')
-            
-            # Parse HTML
-            soup = BeautifulSoup(html_content, 'html.parser')
-            
-            # Find the stats table
-            stats_table = soup.find('table', {'id': 'stats_standard_9'})
-            
-            if not stats_table:
-                self.logger.error("No stats table found!")
-                return {'success': False, 'error': 'Table not found'}
-            
-            # Debug the table structure
-            print("=== TABLE STRUCTURE DEBUG ===")
-            
-            # Check thead structure
-            thead = stats_table.find('thead')
-            if thead:
-                print(f"Found thead with {len(thead.find_all('tr'))} rows")
-                
-                # Look at all header rows
-                for i, row in enumerate(thead.find_all('tr')):
-                    print(f"Header row {i}: {len(row.find_all(['th', 'td']))} cells")
-                    # Show first few cells
-                    cells = row.find_all(['th', 'td'])[:5]
-                    for j, cell in enumerate(cells):
-                        data_stat = cell.get('data-stat', 'NO_DATA_STAT')
-                        text = cell.get_text(strip=True)
-                        print(f"  Cell {j}: data-stat='{data_stat}', text='{text}'")
-            
-            # Check tbody structure  
-            tbody = stats_table.find('tbody')
-            if tbody:
-                rows = tbody.find_all('tr')
-                print(f"Found tbody with {len(rows)} rows")
-                
-                # Look at first few data rows
-                for i, row in enumerate(rows[:3]):
-                    data_row = row.get('data-row')
-                    print(f"Row {i}: data-row='{data_row}', {len(row.find_all(['th', 'td']))} cells")
-                    
-                    # Show first few cells of this row
-                    cells = row.find_all(['th', 'td'])[:3]
-                    for j, cell in enumerate(cells):
-                        text = cell.get_text(strip=True)
-                        print(f"  Cell {j}: '{text}'")
-            
-            print("=== END DEBUG ===")
-            return {'success': True}
-            
-        except Exception as e:
-            self.logger.error(f"Debug error: {e}")
-            return {'success': False, 'error': str(e)}
 
     def save_to_csv(self, data: Dict, filename: str = None):
         """

@@ -23,3 +23,4 @@ Thumbs.db
 .idea/
 data-pipeline/scraper.log
 data-pipeline/scraper/__pycache__/
+data-pipeline/data/raw/
