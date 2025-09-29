@@ -98,7 +98,7 @@ class FBRefScraper:
         # Update the last request time
         self.last_request = time.time()
 
-    def test_connection_urllib(self, team_id: str, team_name: str, season: str = "2025-2026"):
+    def test_connection_urllib(self, team_id: str, team_name: str, season: str):
         """
         Test connection using urllib instead of requests library
         Now with proper gzip decompression handling
@@ -176,7 +176,7 @@ class FBRefScraper:
             self.logger.error(f"urllib unexpected error: {e}")
             return {'success': False, 'error': f'Unexpected: {e}'}
 
-    def discover_team_id(self, team_search_name: str, season: str = "2025-2026"):
+    def discover_team_id(self, team_search_name: str, season: str):
         """
         Find a team's FBRef ID by searching the Premier League team page
         """
@@ -237,7 +237,7 @@ class FBRefScraper:
             self.logger.error(f"Unexpected error discovering team ID for {team_search_name}: {e}")
             return { "success": False, "error": str(e) }
 
-    def test_team_id(self, team_id: str, team_name: str, season: str = "2025-2026"):
+    def test_team_id(self, team_id: str, team_name: str, season: str):
         """
         Test if a team ID actually works by trying to access the team's stats page
         """
@@ -288,7 +288,7 @@ class FBRefScraper:
             pass
         return ""
 
-    def discover_all_premier_league_teams(self, season: str = "2025-2026"):
+    def discover_all_premier_league_teams(self, season: str):
         """
         Discover Premier League teams using only structural patterns, no hardcoded lists
         """
@@ -359,7 +359,7 @@ class FBRefScraper:
             self.logger.error(f"Error discovering Premier League teams: {e}")
             return {"success": False, "error": str(e)}
 
-    def scrape_multiple_teams(self, teams: Dict):
+    def scrape_multiple_teams(self, teams: Dict, season: str):
         """
         Scrape multiple teams in parallel with progress tracking
         """
@@ -371,14 +371,14 @@ class FBRefScraper:
         # Get all teams
         team_items = list(teams.items())    
 
-        self.logger.info(f"Scraping {len(team_items)} teams in parallel")
+        self.logger.info(f"Scraping {len(team_items)} teams for season {season}")
 
         for team_key, team_info in team_items:
             try:
                 self.logger.info(f"Scraping {team_info['official_name']}")
 
                 # Scrape the team
-                result = self.parse_player_stats(team_info['id'], team_info['name'])
+                result = self.parse_player_stats(team_info['id'], team_info['name'], season)
 
                 if result['success']:
                     # Save to CSV
@@ -392,7 +392,7 @@ class FBRefScraper:
                         }
 
                         successful_teams += 1
-                        self.logger.info(f" {team_info['official_name']}: {result['player_count']} players saved")
+                        self.logger.info(f"Successfully saved {team_info['official_name']}: {result['player_count']} players")
                     else:
                         results[team_key] = { "success": False, "error": save_result["error"] }
                         failed_teams += 1
@@ -411,123 +411,163 @@ class FBRefScraper:
             "results": results,
         }
             
-    def parse_player_stats(self, team_id: str, team_name: str, season: str = "2025-2026"):
+    def parse_player_stats(self, team_id: str, team_name: str, season: str):
         """
-        Extract actual player statistics in a structured format to export to a CSV file
+        Extract player statistics with robust retry logic for network and server issues
         """
-
         # Build the URL
         url = f"{self.base_url}/en/squads/{team_id}/{season}/c9/{team_name}-Stats-Premier-League"
+        
+        # Configure retry behavior
+        max_retries = 3
+        retry_count = 0
+        
+        # Retry loop for handling temporary failures
+        while retry_count < max_retries:
+            try:
+                # Apply rate limiting
+                self._rate_limit()
 
-        try:
-            # Apply rate limiting
-            self._rate_limit()
-
-            # Log what we're attempting
-            self.logger.info(f"Parsing player stats from: {url}")
-
-            # Make request with urllib
-            request = urllib.request.Request(url)
-            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
-
-            # Get the page content
-            with urllib.request.urlopen(request, timeout=30) as response:
-                html_content = response.read().decode('utf-8')
-
-            # Parse with BeautifulSoup
-            soup = BeautifulSoup(html_content, 'html.parser')
-
-            # Find the table with the stats
-            stats_table = soup.find('table', {'id': 'stats_standard_9'})
-
-            # Abort if no table is found
-            if not stats_table:
-                return { "success": False, "error": "No stats table found" }
-
-            # Extract table headers with data-stat attributes
-            thead = stats_table.find('thead')
-            header_rows = thead.find_all('tr')
-
-            # Use the second header row with the actual column headers
-            if len(header_rows) > 2:
-                return { "success": False, "error": "Could not find detailed header row" }
-
-            # Extract table headers
-            header_row = header_rows[1]
-            headers = []
-            for th in header_row.find_all('th'):
-                # Get the data-stat attribute
-                stat_name = th.get('data-stat', '')
-                if stat_name:
-                    headers.append(stat_name)
+                # Log what we're attempting
+                if retry_count > 0:
+                    self.logger.info(f"Retry attempt {retry_count} for {team_name} {season}")
                 else:
-                    # If no data-stat, use the text content
-                    text_context = th.get_text(strip=True)
-                    if text_context:
-                        headers.append(text_context)
+                    self.logger.info(f"Parsing player stats from: {url}")
 
-            self.logger.info(f"Found {len(headers)} columns: {headers[:10]}...") # Log the first 10 headers
+                # Make request with urllib and extended timeout
+                request = urllib.request.Request(url)
+                request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
 
-            # Extract player data
-            players_data = []
-            tbody = stats_table.find('tbody')
+                # Extended timeout to 60 seconds for potentially slow historical pages
+                with urllib.request.urlopen(request, timeout=60) as response:
+                    html_content = response.read().decode('utf-8')
 
-            for row_index, row in enumerate(tbody.find_all('tr')):
-                # Get all cells in this row
-                cells = row.find_all(['th', 'td'])
+                # Parse with BeautifulSoup
+                soup = BeautifulSoup(html_content, 'html.parser')
 
-                # Skip rows that don't have enough cells
-                if len(cells) < 10:
-                    self.logger.info(f"Skipping row {row_index} with only {len(cells)} cells")
-                    continue
+                # Find the table with the stats
+                stats_table = soup.find('table', {'id': 'stats_standard_9'})
 
-                player_data = {}
+                # Abort if no table is found
+                if not stats_table:
+                    return {"success": False, "error": "No stats table found"}
 
-                # Map each cell to its corresponding header
-                for i, cell in enumerate(cells):
-                    if i < len(headers):
-                        column_name = headers[i]
-                        cell_value = cell.get_text(strip=True)
+                # Extract table headers from second row
+                thead = stats_table.find('thead')
+                header_rows = thead.find_all('tr')
 
-                        # Handle special cases like players with links
-                        if column_name == 'player' and cell.find('a'):
-                            # Get the link
-                            link = cell.find('a')
-                            player_data['player_url'] = link.get('href', '')
+                # Validate we have enough header rows
+                if len(header_rows) < 2:
+                    return {"success": False, "error": "Could not find detailed header row"}
 
-                            # Extract player ID from URL
-                            if '/players/' in player_data['player_url']:
-                                player_id = player_data['player_url'].split('/players/')[1].split('/')[0] 
-                                player_data['player_id'] = player_id
+                # Extract table headers from second row
+                header_row = header_rows[1]
+                headers = []
+                for th in header_row.find_all('th'):
+                    # Get the data-stat attribute for clean column names
+                    stat_name = th.get('data-stat', '')
+                    if stat_name:
+                        headers.append(stat_name)
+                    else:
+                        # Fallback to text content if no data-stat
+                        text_content = th.get_text(strip=True)
+                        if text_content:
+                            headers.append(text_content)
 
-                        player_data[column_name] = cell_value
+                self.logger.info(f"Found {len(headers)} columns: {headers[:10]}...")
 
-                # Only add if we have all required data
-                if player_data.get('player') and len(player_data) > 5:
-                    players_data.append(player_data)
-                    self.logger.info(f"Added player {player_data.get('player')} to data")
+                # Extract player data from tbody
+                players_data = []
+                tbody = stats_table.find('tbody')
+
+                for row_index, row in enumerate(tbody.find_all('tr')):
+                    # Get all cells in this row
+                    cells = row.find_all(['th', 'td'])
+
+                    # Skip rows with insufficient cells (likely summary rows)
+                    if len(cells) < 10:
+                        continue
+
+                    player_data = {}
+
+                    # Map each cell value to its corresponding header
+                    for i, cell in enumerate(cells):
+                        if i < len(headers):
+                            column_name = headers[i]
+                            cell_value = cell.get_text(strip=True)
+
+                            # Special handling for player links to extract IDs
+                            if column_name == 'player' and cell.find('a'):
+                                link = cell.find('a')
+                                player_data['player_url'] = link.get('href', '')
+
+                                # Extract player ID from URL pattern
+                                if '/players/' in player_data['player_url']:
+                                    player_id = player_data['player_url'].split('/players/')[1].split('/')[0] 
+                                    player_data['player_id'] = player_id
+
+                            # Store the cell value
+                            player_data[column_name] = cell_value
+
+                    # Only add players with sufficient data
+                    if player_data.get('player') and len(player_data) > 5:
+                        players_data.append(player_data)
+
+                # Log successful parsing
+                self.logger.info(f"Successfully parsed {len(players_data)} players")
+
+                # Return structured data - if we get here, parsing succeeded
+                return {
+                    "success": True,
+                    "team_id": team_id,
+                    "team_name": team_name,
+                    "season": season,
+                    "scraped_at": datetime.now().isoformat(),
+                    "headers": headers,
+                    "players": players_data,
+                    "player_count": len(players_data),
+                }
+
+            except urllib.error.HTTPError as e:
+                # Handle HTTP errors with retry logic
+                if e.code in [403, 500, 502, 504]:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        # Exponential backoff: 30s, 60s, 120s
+                        wait_time = 30 * (2 ** (retry_count - 1))
+                        self.logger.warning(f"HTTP {e.code} error, waiting {wait_time}s before retry {retry_count}...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        # All retries exhausted
+                        self.logger.error(f"HTTP {e.code} error persisted after {max_retries} attempts")
+                        return {"success": False, "error": f"HTTP {e.code} after {max_retries} retries"}
                 else:
-                    self.logger.info(f"Skipping player {player_data.get('player')} because it doesn't have all required data")
-
-            # Log the number of players found
-            self.logger.info(f"Successfully parsed {len(players_data)} players")
-
-            # Return structed data
-            return {
-                "success": True,
-                "team_id": team_id,
-                "team_name": team_name,
-                "season": season,
-                "scraped_at": datetime.now().isoformat(),
-                "headers": headers,
-                "players": players_data,
-                "player_count": len(players_data),
-            }
-
-        except Exception as e:
-            # Handle any other errors
-            self.logger.error(f"Unexpected error parsing player stats: {e}")
-            return { "success": False, "error": str(e) }
+                    # Non-retryable HTTP error
+                    return {"success": False, "error": f"HTTP Error {e.code}: {e.reason}"}
+                    
+            except Exception as e:
+                # Handle timeout and other errors
+                error_message = str(e).lower()
+                
+                if "timed out" in error_message or "timeout" in error_message:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        # Linear backoff for timeouts: 20s, 40s, 60s
+                        wait_time = 20 * retry_count
+                        self.logger.warning(f"Timeout error, waiting {wait_time}s before retry {retry_count}...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        # All retries exhausted
+                        self.logger.error(f"Timeout persisted after {max_retries} attempts")
+                        return {"success": False, "error": f"Timeout after {max_retries} retries"}
+                else:
+                    # Non-retryable error
+                    return {"success": False, "error": str(e)}
+    
+        # If we exit the while loop without returning, all retries failed
+        return {"success": False, "error": f"Failed after {max_retries} retry attempts"}
 
     def save_to_csv(self, data: Dict, filename: str = None):
         """
@@ -540,18 +580,21 @@ class FBRefScraper:
             return {"success": False, "error": "No valid player data to save"}
 
         try:
-            # Create the data/raw directory if it doesn't exist
-            data_dir = "data/raw"
-            os.makedirs(data_dir, exist_ok=True)
+            #Get the season from the data
+            season = data.get('season', 'unknown')
+
+            # Create the data/raw directory for each season if it doesn't exist
+            season_dir = f"data/raw/{season}"
+            os.makedirs(season_dir, exist_ok=True)
             
             # Generate filename if not provided
             if not filename:
                 # Create filename based on team and season
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"{data['team_name']}_{data['season']}_{timestamp}.csv"
+                filename = f"{data['team_name']}_{season}_{timestamp}.csv"
 
             # Create the full file path
-            file_path = f"{data_dir}/{filename}"
+            file_path = f"{season_dir}/{filename}"
 
             # Log what we're doing
             self.logger.info(f"Saving {len(data['players'])} players to: {file_path}")
@@ -579,3 +622,199 @@ class FBRefScraper:
             # Handle any other errors
             self.logger.error(f"Error saving to CSV: {e}")
             return {"success": False, "error": str(e)}
+
+    def scrape_historical_data(self, seasons: List[str], max_teams_per_season: int = None):
+        """
+        Scrape multiple seasons using existing methods
+        """
+        all_results = {}
+        
+        for season in seasons:
+            self.logger.info(f"Starting season: {season}")
+            
+            # Discover teams for this season
+            teams_result = self.discover_all_premier_league_teams(season)
+            
+            if teams_result['success']:
+                teams = teams_result['teams']
+                
+                # Limit teams for testing if specified
+                if max_teams_per_season:
+                    teams = dict(list(teams.items())[:max_teams_per_season])
+                
+                # Scrape all teams for this season
+                season_result = self.scrape_multiple_teams(teams, season)
+                all_results[season] = season_result
+            else:
+                all_results[season] = {'success': False, 'error': teams_result['error']}
+        
+        return all_results
+
+    def scrape_completed_seasons(self, completed_seasons: List[str]):
+        """
+        Scrape historical seasons that never change
+        """
+
+        all_results = {}
+        total_skipped = 0
+        total_scraped = 0
+
+        self.logger.info(f"Scraping completed seasons: {completed_seasons}")
+
+        for season in completed_seasons:
+            # Check if we've already scraped this season
+            if self._season_already_scraped(season):
+                self.logger.info(f"Skipping already scraped season: {season}")
+                all_results[season] = {'skipped': True, 'reason': 'Already scraped'}
+                total_skipped += 1
+                continue
+
+            # Scrape complete season data
+            self.logger.info(f"Scraping complete season data for: {season}")
+
+            try:
+                # Discover teams for this season
+                teams_result = self.discover_all_premier_league_teams(season)
+
+                if teams_result['success']:
+                    teams = teams_result['teams']
+                    self.logger.info(f"Discovered {len(teams)} teams for season: {season}")
+
+                    # Scrape all teams for this season
+                    season_result = self.scrape_multiple_teams(teams, season)
+                    all_results[season] = season_result
+                    total_scraped += 1
+
+                    self.logger.info(f"Completed scraping for {season}: {season_result['successful_teams']} successful")
+
+                else:
+                    self.logger.error(f"Failed to discover teams for season: {season}: {teams_result['error']}")
+                    all_results[season] = {'success': False, 'error': teams_result['error']}
+
+            except Exception as e:
+                self.logger.error(f"Unexpected error scraping season: {season}: {e}")
+                all_results[season] = {'success': False, 'error': str(e)}
+
+        self.logger.info(f"Completed scraping {total_scraped} seasons, skipped {total_skipped} seasons")
+
+        return {
+            "success": True,
+            "seasons_processed": len(completed_seasons),
+            "seasons_skipped": total_skipped,
+            "seasons_scraped": total_scraped,
+            "results": all_results,
+        }
+    
+    def update_current_season(self, current_season: str):
+        """
+        Update current season weekly
+        """
+
+        self.logger.info(f"Updating current season: {current_season}")
+
+        try:
+            # Discover teams for this season
+            teams_result = self.discover_all_premier_league_teams(current_season)
+
+            if teams_result['success']:
+                teams = teams_result['teams']
+                self.logger.info(f"Discovered {len(teams)} teams for season: {current_season}")
+
+                # Clear existing current season directory
+                current_season_dir = f"data/raw/{current_season}"
+                if os.path.exists(current_season_dir):
+                    # Remove old files
+                    for filename in os.listdir(current_season_dir):
+                        if filename.endswith('.csv'):
+                            file_path = os.path.join(current_season_dir, filename)
+                            os.remove(file_path)
+                            self.logger.info(f"Removed old file: {file_path}")
+
+                # Scrape all teams for this season
+                season_result = self.scrape_multiple_teams(teams, current_season)
+
+                # Log update summary
+                if season_result['success']:
+                    self.logger.info(f"Completed scraping for {current_season}: {season_result['successful_teams']} teams updated")
+                    return {
+                        "success": True,
+                        "season": current_season,
+                        "teams_updated": season_result['successful_teams'],
+                        "teams_failed": season_result['failed_teams'],
+                        "results": season_result['results'],
+                    }
+
+                else:
+                    return {"success": False, "error": season_result['error']}
+
+            else:
+                self.logger.error(f"Failed to discover teams for season: {current_season}: {teams_result['error']}")
+                return {"success": False, "error": teams_result['error']}
+
+        except Exception as e:
+            self.logger.error(f"Unexpected error updating current season: {current_season}: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _season_already_scraped(self, season: str) -> bool:
+        """
+        Private method to check if a season has already been scraped
+        """
+
+        season_dir = f"data/raw/{season}"
+
+        # Check if the season directory exists
+        if not os.path.exists(season_dir):
+            return False
+
+        # Count CSV files in the season directory
+        try:
+            csv_files = [f for f in os.listdir(season_dir) if f.endswith('.csv')]
+            file_count = len(csv_files)
+
+            # Expect at least 20 teams for a complete season
+            if file_count >= 20:
+                self.logger.info(f"Season {season} has already been scraped with {file_count} files")
+                return True
+            else:
+                self.logger.info(f"Season {season} has not been scraped fully with {file_count} files")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error checking if season {season} has already been scraped: {e}")
+            return False
+
+    def full_historical_collection(self, start_year: int = 2021, end_year: int = 2024):
+        """
+        Complete historical data collection for ML training dataset
+        """
+
+        # Generate a list of completed seasons
+        completed_seasons = []
+        for year in range(start_year, end_year + 1):
+            season = f"{year}-{year + 1}"
+            completed_seasons.append(season)
+
+        self.logger.info(f"Starting full historical collection: {completed_seasons}")
+
+        # Scrape completed seasons
+        historical_results = self.scrape_completed_seasons(completed_seasons)
+
+        # Calculate total data collected
+        total_teams = 0
+        total_players = 0
+
+        for season, result in historical_results["results"].items():
+            if result.get("success"):
+                total_teams += result.get("successful_teams", 0)
+                # Estimate players per team based on average
+                total_players += result.get("successful_teams", 0) * 25 # Average 25 players max per team
+
+        self.logger.info(f"Completed full historical collection: {total_teams} teams, {total_players} players")
+
+        return {
+            "success": True,
+            "historical_results": historical_results,
+            "total_teams": total_teams,
+            "total_players": total_players,
+            "ready_for_ml": total_players >= 1500,
+        }
