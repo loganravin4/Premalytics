@@ -24,3 +24,4 @@ Thumbs.db
 data-pipeline/scraper.log
 data-pipeline/scraper/__pycache__/
 data-pipeline/data/raw/
+data-pipeline/test_scraper.py
