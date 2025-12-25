@@ -1,5 +1,6 @@
 import requests
 import time
+import random
 from bs4 import BeautifulSoup
 import pandas as pd
 from datetime import datetime
@@ -7,9 +8,25 @@ import logging
 from typing import Dict, List, Optional
 import urllib.request
 import urllib.error
-import urllib.parse
+import http.cookiejar
 import gzip
 import os
+
+# Import cloudscraper to bypass Cloudflare protection
+try:
+    import cloudscraper
+    CLOUDSCRAPER_AVAILABLE = True
+except ImportError:
+    CLOUDSCRAPER_AVAILABLE = False
+    logging.warning("cloudscraper not available - Cloudflare protection bypass disabled")
+
+# Import fallback adapter
+try:
+    from scraper.soccerdata_fallback import SoccerDataFallback
+    FALLBACK_AVAILABLE = True
+except ImportError:
+    FALLBACK_AVAILABLE = False
+    logging.warning("SoccerData fallback not available")
 
 class FBRefScraper:
     """
@@ -21,28 +38,53 @@ class FBRefScraper:
         Initialize the scraper when we create a new instance
         """
 
+        # Initialize logging first so we can use logger
+        self._setup_logging()
+        
         # Base URL for FBRef
         self.base_url = "https://fbref.com"
-
-        # Create a session to maintain cookies and connection across requests
-        self.session = requests.Session()
-
-        # Minimum delay between requests to avoid being blocked
+        
+        # Create a session - use cloudscraper if available to bypass Cloudflare
+        if CLOUDSCRAPER_AVAILABLE:
+            self.session = cloudscraper.create_scraper()
+            self.logger.info("Using cloudscraper to bypass Cloudflare protection")
+        else:
+            self.session = requests.Session()
+            self.logger.warning("cloudscraper not available - using regular requests (may be blocked by Cloudflare)")
+        
+        # Minimum delay between requests to comply with FBRef rate limits
         self.min_delay = 7.0
-
+        
         # Track when we made our last request
         self.last_request = None
+        
+        # Track last visited URL for realistic referer chain
+        self.last_url = None
+        
+        # Set up cookie jar for urllib requests to maintain session
+        self.cookie_jar = http.cookiejar.CookieJar()
 
-        # Set up professional headers so FBRef knows we're legit
+        # Build opener with cookie processor and gzip decompression support
+        handlers = [
+            urllib.request.HTTPCookieProcessor(self.cookie_jar),
+            urllib.request.HTTPHandler(),
+            urllib.request.HTTPSHandler(),
+        ]
+        self.url_opener = urllib.request.build_opener(*handlers)
+        
+        # Track if we've established initial session
+        self.session_established = False
+        
+        # Set up professional headers - UPDATED December 2024
         self.session.headers.update({
-            # Use a standard Chrome browser user agent instead of identifying as a bot
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            # Updated to Chrome 131 (current version December 2024)
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             # Specify what content types we can accept
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             # Specify what languages we prefer  
             'Accept-Language': 'en-US,en;q=0.9',
             # Specify what compression we can handle
-            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
             # Keep the connection alive for efficiency
             'Connection': 'keep-alive',
             # Tell server we want HTTPS when possible
@@ -51,7 +93,15 @@ class FBRefScraper:
             'Sec-Fetch-Dest': 'document',
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
             'Cache-Control': 'max-age=0',
+            # Makes requests look like they came from Google search
+            'Referer': 'https://www.google.com/',
+            # Modern Chrome client hints headers
+            'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'DNT': '1',
         })
 
         # Define additional table types we can scrape beyond standard stats
@@ -98,8 +148,17 @@ class FBRefScraper:
             }
         }
 
-        # Initialize logging for tracking what the scraper is doing
-        self._setup_logging()
+        # Initialize fallback adapter
+        self.fallback = None
+        if FALLBACK_AVAILABLE:
+            try:
+                self.fallback = SoccerDataFallback()
+                if self.fallback.is_available():
+                    self.logger.info("SoccerData fallback enabled - will use if primary method fails")
+                else:
+                    self.logger.warning("SoccerData fallback not available")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize fallback: {e}")
 
     def _setup_logging(self):
         """
@@ -120,6 +179,130 @@ class FBRefScraper:
         # Create a logger for this class
         self.logger = logging.getLogger(__name__)
 
+    def _establish_session(self):
+        """
+        Establish initial session by visiting homepage to get cookies
+        """
+        if self.session_established:
+            return True
+        
+        try:
+            self.logger.info("Establishing initial session by visiting FBRef homepage...")
+            
+            # Add a small initial delay before first request to appear more natural
+            if self.last_request is None:
+                initial_delay = random.uniform(2.0, 5.0)
+                self.logger.info(f"Initial delay: {initial_delay:.2f} seconds before first request")
+                time.sleep(initial_delay)
+            
+            self._rate_limit()
+            
+            # Visit homepage first - use requests library for better browser-like behavior
+            homepage_url = f"{self.base_url}/"
+            
+            # Use requests session which handles TLS, cookies, and headers more like a browser
+            response = self.session.get(
+                homepage_url,
+                timeout=30,
+                allow_redirects=True
+            )
+            
+            # Check if request was successful
+            if response.status_code == 200:
+                self.last_url = homepage_url
+                self.logger.info("Successfully established session with FBRef")
+                self.session_established = True
+                
+                # Sync cookies from requests session to urllib cookie jar for consistency
+                for cookie in self.session.cookies:
+                    # Add cookie to urllib cookie jar
+                    cookie_obj = http.cookiejar.Cookie(
+                        version=0,
+                        name=cookie.name,
+                        value=cookie.value,
+                        port=None,
+                        port_specified=False,
+                        domain=cookie.domain,
+                        domain_specified=bool(cookie.domain),
+                        domain_initial_dot=cookie.domain.startswith('.'),
+                        path=cookie.path,
+                        path_specified=bool(cookie.path),
+                        secure=cookie.secure,
+                        expires=cookie.expires,
+                        discard=False,
+                        comment=None,
+                        comment_url=None,
+                        rest={},
+                        rfc2109=False
+                    )
+                    self.cookie_jar.set_cookie(cookie_obj)
+                
+                return True
+            elif response.status_code == 403:
+                # IP is blocked - show detailed error message
+                self._log_ip_block_error(response)
+                return False
+            else:
+                self.logger.warning(f"Session establishment returned status {response.status_code}")
+                return False
+                
+        except requests.exceptions.HTTPError as e:
+            if e.response and e.response.status_code == 403:
+                self._log_ip_block_error(e.response)
+            else:
+                self.logger.warning(f"HTTP error establishing session: {e}")
+            return False
+        except Exception as e:
+            self.logger.warning(f"Failed to establish session (will continue anyway): {e}")
+            # Don't fail completely, just continue
+            return False
+
+    def _log_ip_block_error(self, response=None):
+        """
+        Log detailed information about IP blocking
+        """
+
+        self.logger.error("")
+        self.logger.error("IP ADDRESS BLOCKED BY FBREF")
+        self.logger.error("")
+        self.logger.error("Your IP address is currently blocked from accessing FBRef.")
+        self.logger.error("This happens when:")
+        self.logger.error("  • Too many requests were made in a short time")
+        self.logger.error("  • Rate limits were exceeded (max 10 requests/minute)")
+        self.logger.error("  • Bot detection systems flagged your IP")
+        self.logger.error("")
+        self.logger.error("IMPORTANT: Blocks can last up to 24 hours")
+        self.logger.error("")
+        self.logger.error("SOLUTIONS (in order of recommendation):")
+        self.logger.error("")
+        self.logger.error("1. USE A VPN")
+        self.logger.error("   - Connect to a VPN service")
+        self.logger.error("   - This gives you a new IP address")
+        self.logger.error("   - Free options: ProtonVPN, Windscribe")
+        self.logger.error("")
+        self.logger.error("2. USE A PROXY")
+        self.logger.error("   - Configure a proxy server")
+        self.logger.error("   - Rotate IPs for better success")
+        self.logger.error("")
+        self.logger.error("3. WAIT 24 HOURS")
+        self.logger.error("   - Most IP blocks expire after 24 hours")
+        self.logger.error("   - Try again tomorrow")
+        self.logger.error("")
+        self.logger.error("4. TRY DIFFERENT NETWORK")
+        self.logger.error("   - Use mobile hotspot")
+        self.logger.error("   - Try different WiFi network")
+        self.logger.error("   - Use a different location")
+        self.logger.error("")
+        if response:
+            try:
+                response_text = response.text[:300]
+                if "blocked" in response_text.lower() or "forbidden" in response_text.lower():
+                    self.logger.error("Response indicates blocking:")
+                    self.logger.error(response_text[:200])
+            except:
+                pass
+        self.logger.error("")
+
     def _rate_limit(self):
         """
         Private method to enforce delays between requests
@@ -130,22 +313,130 @@ class FBRefScraper:
             # Calculate time since last request
             elapsed = time.time() - self.last_request
 
+            # Add small random variation to make timing less predictable
+            random_variation = random.uniform(0, 1.5)
+            adjusted_delay = self.min_delay + random_variation
+
             # Check if we need to wait
-            if elapsed < self.min_delay:
+            if elapsed < adjusted_delay:
                 # Calculate how long to wait
-                sleep_time = self.min_delay - elapsed
+                sleep_time = adjusted_delay - elapsed
                 # Log the wait
-                self.logger.info(f"Waiting {sleep_time:.2f} seconds before next request")
+                self.logger.info(f"Rate limiting: waiting {sleep_time:.2f} seconds (FBRef limit: 10 req/min)")
                 # Wait for the required time
                 time.sleep(sleep_time)
+            else:
+                # Log if we're already past the delay
+                self.logger.debug(f"Rate limit check: {elapsed:.2f}s elapsed, no wait needed")
 
         # Update the last request time
         self.last_request = time.time()
 
+    def _create_request(self, url: str, referer: str = None):
+        """
+        Private helper to create urllib request with current headers
+        """
+        
+        request = urllib.request.Request(url)
+        
+        # Determine referer - use last visited URL if available, otherwise smart defaults
+        if referer is None:
+            if self.last_url and 'fbref.com' in self.last_url:
+                # Use last visited fbref.com URL as referer for realistic navigation
+                referer = self.last_url
+            elif 'fbref.com' in url:
+                # First fbref.com request - use Google as referer
+                referer = 'https://www.google.com/'
+            else:
+                referer = 'https://www.google.com/'
+        
+        # Determine Sec-Fetch-Site based on referer
+        if 'fbref.com' in referer:
+            sec_fetch_site = 'same-origin'
+        else:
+            sec_fetch_site = 'none'
+        
+        # Apply all current session headers to urllib request with modern Chrome headers
+        request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
+        request.add_header('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7')
+        request.add_header('Accept-Language', 'en-US,en;q=0.9')
+        request.add_header('Accept-Encoding', 'gzip, deflate, br, zstd')
+        request.add_header('Connection', 'keep-alive')
+        request.add_header('Upgrade-Insecure-Requests', '1')
+        request.add_header('Sec-Fetch-Dest', 'document')
+        request.add_header('Sec-Fetch-Mode', 'navigate')
+        request.add_header('Sec-Fetch-Site', sec_fetch_site)
+        request.add_header('Sec-Fetch-User', '?1')
+        request.add_header('Cache-Control', 'max-age=0')
+        request.add_header('Referer', referer)
+        # Modern Chrome client hints headers
+        request.add_header('sec-ch-ua', '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"')
+        request.add_header('sec-ch-ua-mobile', '?0')
+        request.add_header('sec-ch-ua-platform', '"Windows"')
+        request.add_header('DNT', '1')
+        
+        return request
+
+    def test_connection_diagnostic(self):
+        """
+        Diagnostic method to test connection and identify blocking issues
+        """
+        self.logger.info("FBRef Connection Diagnostic Test")
+        
+        test_url = f"{self.base_url}/"
+        
+        # Test with requests library
+        self.logger.info("\nTesting with requests library...")
+        try:
+            self._rate_limit()
+            response = self.session.get(test_url, timeout=30)
+            self.logger.info(f"  Status Code: {response.status_code}")
+            self.logger.info(f"  Response Headers: {dict(response.headers)}")
+            if response.status_code == 200:
+                self.logger.info("  SUCCESS: Connection works with requests library")
+                return {"success": True, "method": "requests", "status": response.status_code}
+            else:
+                self.logger.warning(f"  FAILED: Got status {response.status_code}")
+        except requests.exceptions.HTTPError as e:
+            if e.response and e.response.status_code == 403:
+                self.logger.error("  FAILED: 403 Forbidden - IP likely blocked")
+            else:
+                self.logger.error(f"  FAILED: HTTP Error {e}")
+        except Exception as e:
+            self.logger.error(f"  FAILED: {e}")
+        
+        # Test with urllib
+        self.logger.info("\nTesting with urllib...")
+        try:
+            self._rate_limit()
+            request = self._create_request(test_url)
+            with self.url_opener.open(request, timeout=30) as response:
+                self.logger.info(f"  Status Code: {response.status}")
+                if response.status == 200:
+                    self.logger.info("  SUCCESS: Connection works with urllib")
+                    return {"success": True, "method": "urllib", "status": response.status}
+                else:
+                    self.logger.warning(f"  FAILED: Got status {response.status}")
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                self.logger.error("  FAILED: 403 Forbidden - IP likely blocked")
+            else:
+                self.logger.error(f"  FAILED: HTTP Error {e.code}")
+        except Exception as e:
+            self.logger.error(f"  FAILED: {e}")
+        
+        self.logger.info("Diagnostic Summary:")
+        self.logger.info("  If both tests failed with 403, your IP is likely blocked")
+        self.logger.info("  Solutions:")
+        self.logger.info("    1. Wait 24 hours for IP block to expire")
+        self.logger.info("    2. Use a VPN or proxy service")
+        self.logger.info("    3. Try from a different network/IP address")
+        
+        return {"success": False, "error": "All connection tests failed"}
+
     def test_connection_urllib(self, team_id: str, team_name: str, season: str):
         """
         Test connection using urllib instead of requests library
-        Now with proper gzip decompression handling
         """
 
         # Build the URL
@@ -158,21 +449,17 @@ class FBRefScraper:
             # Log what we're attempting
             self.logger.info(f"Testing urllib connection to: {url}")
             
-            # Create a request object with headers
-            request = urllib.request.Request(url)
+            # Establish session if not already done
+            self._establish_session()
             
-            # Add all our headers to the request
-            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
-            request.add_header('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8')
-            request.add_header('Accept-Language', 'en-US,en;q=0.9')
-            # Don't request gzip encoding to avoid compression issues
-            # request.add_header('Accept-Encoding', 'gzip, deflate')  # Comment this out
-            request.add_header('Connection', 'keep-alive')
-            request.add_header('Upgrade-Insecure-Requests', '1')
-            request.add_header('Cache-Control', 'max-age=0')
+            # Create a request object with headers using centralized method
+            request = self._create_request(url)
             
-            # Make the actual request with urllib
-            with urllib.request.urlopen(request, timeout=30) as response:
+            # Make the actual request with urllib using cookie-enabled opener
+            with self.url_opener.open(request, timeout=30) as response:
+                # Track this URL as last visited for referer chain
+                self.last_url = url
+                
                 # Read the response content as bytes first
                 content_bytes = response.read()
                 
@@ -226,6 +513,9 @@ class FBRefScraper:
         """
 
         try:
+            # Establish session if not already done
+            self._establish_session()
+            
             # Apply rate limiting
             self._rate_limit()
 
@@ -237,10 +527,11 @@ class FBRefScraper:
             self.logger.info(f"Checking standings page: {standings_url}")
 
             # Make request with urllib
-            request = urllib.request.Request(standings_url)
-            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+            request = self._create_request(standings_url)
 
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with self.url_opener.open(request, timeout=30) as response:
+                # Track this URL as last visited for referer chain
+                self.last_url = standings_url
                 html_content = response.read().decode('utf-8')
 
             # Parse with BeautifulSoup
@@ -287,6 +578,9 @@ class FBRefScraper:
         """
 
         try:
+            # Establish session if not already done
+            self._establish_session()
+            
             # Apply rate limiting
             self._rate_limit()
 
@@ -297,10 +591,11 @@ class FBRefScraper:
             url = f"{self.base_url}/en/squads/{team_id}/{season}/c9/{clean_name}-Stats-Premier-League"
 
             # Make request with urllib
-            request = urllib.request.Request(url)
-            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+            request = self._create_request(url)
 
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with self.url_opener.open(request, timeout=30) as response:
+                # Track this URL as last visited for referer chain
+                self.last_url = url
                 if response.status == 200:
                     self.logger.info(f"Confirmed working team ID: {team_id} for {team_name}")
                     return { "success": True, "url": url }
@@ -338,6 +633,9 @@ class FBRefScraper:
         """
 
         try:
+            # Establish session if not already done
+            self._establish_session()
+            
             # Apply rate limiting
             self._rate_limit()
 
@@ -346,12 +644,37 @@ class FBRefScraper:
             
             self.logger.info(f"Discovering Premier League teams from: {stats_url}")
 
-            # Make request with urllib
-            request = urllib.request.Request(stats_url)
-            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
-
-            with urllib.request.urlopen(request, timeout=30) as response:
-                html_content = response.read().decode('utf-8')
+            # Use cloudscraper session if available, otherwise use urllib
+            if CLOUDSCRAPER_AVAILABLE:
+                # Use cloudscraper session for better Cloudflare bypass
+                response = self.session.get(stats_url, timeout=30)
+                
+                # Check for blocking/errors
+                if response.status_code == 403:
+                    self.logger.warning("403 Forbidden - IP blocked. Attempting fallback...")
+                    if self.fallback and self.fallback.is_available():
+                        return self.fallback.discover_all_premier_league_teams(season)
+                    else:
+                        return {"success": False, "error": "HTTP 403: IP blocked and fallback not available"}
+                
+                # Track this URL as last visited for referer chain
+                self.last_url = stats_url
+                html_content = response.text
+            else:
+                # Fallback to urllib if cloudscraper not available
+                request = self._create_request(stats_url)
+                with self.url_opener.open(request, timeout=30) as response:
+                    # Check for blocking/errors
+                    if response.status == 403:
+                        self.logger.warning("403 Forbidden - IP blocked. Attempting fallback...")
+                        if self.fallback and self.fallback.is_available():
+                            return self.fallback.discover_all_premier_league_teams(season)
+                        else:
+                            return {"success": False, "error": "HTTP 403: IP blocked and fallback not available"}
+                    
+                    # Track this URL as last visited for referer chain
+                    self.last_url = stats_url
+                    html_content = response.read().decode('utf-8')
 
             # Parse with BeautifulSoup
             soup = BeautifulSoup(html_content, 'html.parser')
@@ -400,8 +723,23 @@ class FBRefScraper:
             self.logger.info(f"Successfully discovered {len(teams)} teams")
             return {"success": True, "teams": teams}
 
+        except urllib.error.HTTPError as e:
+            # Handle HTTP errors (403, 500, etc.)
+            if e.code == 403:
+                self.logger.warning(f"403 Forbidden - IP blocked. Attempting fallback...")
+                if self.fallback and self.fallback.is_available():
+                    return self.fallback.discover_all_premier_league_teams(season)
+                else:
+                    return {"success": False, "error": f"HTTP 403: IP blocked and fallback not available"}
+            else:
+                self.logger.error(f"HTTP Error {e.code} discovering Premier League teams: {e}")
+                return {"success": False, "error": f"HTTP Error {e.code}: {e.reason}"}
         except Exception as e:
             self.logger.error(f"Error discovering Premier League teams: {e}")
+            # Try fallback for any other errors
+            if self.fallback and self.fallback.is_available():
+                self.logger.info("Attempting fallback due to error...")
+                return self.fallback.discover_all_premier_league_teams(season)
             return {"success": False, "error": str(e)}
 
     def _parse_table_by_id(self, soup: BeautifulSoup, table_id: str, table_name: str = None) -> Dict:
@@ -517,11 +855,23 @@ class FBRefScraper:
                     table_info = f" + {len(include_additional)} additional" if include_additional else ""
                     self.logger.info(f"Parsing player stats{table_info} from: {url}")
 
-                # Make request
-                request = urllib.request.Request(url)
-                request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+                # Establish session if not already done
+                self._establish_session()
+                
+                # Make request using centralized method
+                request = self._create_request(url)
 
-                with urllib.request.urlopen(request, timeout=60) as response:
+                with self.url_opener.open(request, timeout=60) as response:
+                    # Check for blocking/errors
+                    if response.status == 403:
+                        self.logger.warning("403 Forbidden - IP blocked. Attempting fallback...")
+                        if self.fallback and self.fallback.is_available():
+                            return self.fallback.parse_player_stats(team_id, team_name, season, include_additional)
+                        else:
+                            return {"success": False, "error": "HTTP 403: IP blocked and fallback not available"}
+                    
+                    # Track this URL as last visited for referer chain
+                    self.last_url = url
                     html_content = response.read().decode('utf-8')
 
                 soup = BeautifulSoup(html_content, 'html.parser')
@@ -594,9 +944,13 @@ class FBRefScraper:
                         time.sleep(wait_time)
                         continue
                     else:
-                        # All retries exhausted
-                        self.logger.error(f"HTTP {e.code} error persisted after {max_retries} attempts")
-                        return {"success": False, "error": f"HTTP {e.code} after {max_retries} retries"}
+                        # All retries exhausted - try fallback for 403 errors
+                        if e.code == 403 and self.fallback and self.fallback.is_available():
+                            self.logger.warning("All retries exhausted. Attempting fallback for match logs...")
+                            return self.fallback.parse_match_logs(team_id, team_name, season, premier_league_only)
+                        else:
+                            self.logger.error(f"HTTP {e.code} error persisted after {max_retries} attempts")
+                            return {"success": False, "error": f"HTTP {e.code} after {max_retries} retries"}
                 else:
                     # Non-retryable HTTP error
                     return {"success": False, "error": f"HTTP Error {e.code}: {e.reason}"}
@@ -614,13 +968,13 @@ class FBRefScraper:
                         time.sleep(wait_time)
                         continue
                     else:
-                        # All retries exhausted
+                        # All retries exhausted, return error
                         self.logger.error(f"Timeout persisted after {max_retries} attempts")
                         return {"success": False, "error": f"Timeout after {max_retries} retries"}
                 else:
                     # Non-retryable error
                     return {"success": False, "error": str(e)}
-    
+        
         # If we exit the while loop without returning, all retries failed
         return {"success": False, "error": f"Failed after {max_retries} retry attempts"}
 
@@ -685,7 +1039,6 @@ class FBRefScraper:
     def save_extended_data(self, extended_data: Dict, base_filename: str = None):
         """
         Save extended data that includes both standard and additional tables
-        Creates separate CSV files for each table type with organized naming
         """
 
         if not extended_data.get('success'):
@@ -702,7 +1055,7 @@ class FBRefScraper:
         saved_files = []
         
         try:
-            # Save standard stats using existing structure
+            # Save standard stats
             if not base_filename:
                 standard_filename = f"{team_name}_{season}_standard_{timestamp}.csv"
             else:
@@ -710,7 +1063,7 @@ class FBRefScraper:
             
             standard_path = f"{season_dir}/{standard_filename}"
             
-            # Create standard DataFrame using existing logic
+            # Create standard DataFrame
             standard_df = pd.DataFrame(extended_data['players'])
             standard_df.to_csv(standard_path, encoding='utf-8', index=False)
             
@@ -724,7 +1077,7 @@ class FBRefScraper:
             
             self.logger.info(f"Saved standard stats: {len(standard_df)} rows to {standard_filename}")
             
-            # Save additional tables if they exist
+            # Save additional tables
             for table_type, table_data in extended_data.get('additional_tables', {}).items():
                 additional_filename = f"{team_name}_{season}_{table_type}_{timestamp}.csv"
                 additional_path = f"{season_dir}/{additional_filename}"
@@ -755,7 +1108,6 @@ class FBRefScraper:
     def scrape_multiple_teams(self, teams: Dict, season: str, include_additional: List[str] = None, include_match_logs: bool = True):
         """
         Scrape multiple teams with optional additional tables and match logs
-        Now uses improved directory structure with team folders
         """
         
         # Track results for all teams
@@ -767,7 +1119,7 @@ class FBRefScraper:
         # Convert teams dictionary to list for iteration
         team_items = list(teams.items())
         
-        # Build info string about what we're scraping
+        # Build info string
         table_info = ""
         if include_additional:
             table_info += f" + {len(include_additional)} additional player stats"
@@ -781,7 +1133,7 @@ class FBRefScraper:
             try:
                 self.logger.info(f"Scraping {team_info['official_name']}")
                 
-                # STEP 1: Scrape player statistics
+                # Scrape player statistics
                 player_result = self.parse_player_stats(
                     team_info['id'], 
                     team_info['name'], 
@@ -796,9 +1148,9 @@ class FBRefScraper:
                     "match_logs": None,
                 }
                 
-                # STEP 2: Save player stats if successful
+                # Save player stats if successful
                 if player_result['success']:
-                    # Save player stats using new directory structure
+                    # Save player stats
                     if include_additional and player_result.get('additional_tables'):
                         save_result = self.save_extended_team_data(player_result)
                     else:
@@ -820,7 +1172,7 @@ class FBRefScraper:
                 else:
                     team_results["player_stats"] = {"success": False, "error": player_result["error"]}
                 
-                # STEP 3: Scrape match logs if requested
+                # Scrape match logs if requested
                 if include_match_logs:
                     match_result = self.parse_match_logs(
                         team_info['id'],
@@ -848,7 +1200,7 @@ class FBRefScraper:
                     else:
                         team_results["match_logs"] = {"success": False, "error": match_result["error"]}
                 
-                # STEP 4: Determine overall success for this team
+                # Determine overall success for this team
                 player_success = team_results["player_stats"] and team_results["player_stats"].get("success", False)
                 match_success = not include_match_logs or (team_results["match_logs"] and team_results["match_logs"].get("success", False))
                 
@@ -883,6 +1235,7 @@ class FBRefScraper:
         """
         Scrape multiple seasons using existing methods
         """
+
         all_results = {}
         
         for season in seasons:
@@ -1248,12 +1601,24 @@ class FBRefScraper:
                 else:
                     self.logger.info(f"Parsing match logs from: {url}")
                 
-                # Create the request with proper headers
-                request = urllib.request.Request(url)
-                request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+                # Establish session if not already done
+                self._establish_session()
                 
-                # Make the request and get the HTML content
-                with urllib.request.urlopen(request, timeout=60) as response:
+                # Create the request with proper headers using centralized method
+                request = self._create_request(url)
+                
+                # Make the request and get the HTML content using cookie-enabled opener
+                with self.url_opener.open(request, timeout=60) as response:
+                    # Check for blocking/errors
+                    if response.status == 403:
+                        self.logger.warning("403 Forbidden - IP blocked. Attempting fallback...")
+                        if self.fallback and self.fallback.is_available():
+                            return self.fallback.parse_match_logs(team_id, team_name, season, premier_league_only)
+                        else:
+                            return {"success": False, "error": "HTTP 403: IP blocked and fallback not available"}
+                    
+                    # Track this URL as last visited for referer chain
+                    self.last_url = url
                     html_content = response.read().decode('utf-8')
                 
                 # Parse the HTML with BeautifulSoup
@@ -1295,9 +1660,13 @@ class FBRefScraper:
                         time.sleep(wait_time)
                         continue
                     else:
-                        # All retries exhausted
-                        self.logger.error(f"HTTP {e.code} error persisted after {max_retries} attempts")
-                        return {"success": False, "error": f"HTTP {e.code} after {max_retries} retries"}
+                        # All retries exhausted, try fallback
+                        if e.code == 403 and self.fallback and self.fallback.is_available():
+                            self.logger.warning("All retries exhausted. Attempting fallback for match logs...")
+                            return self.fallback.parse_match_logs(team_id, team_name, season, premier_league_only)
+                        else:
+                            self.logger.error(f"HTTP {e.code} error persisted after {max_retries} attempts")
+                            return {"success": False, "error": f"HTTP {e.code} after {max_retries} retries"}
                 else:
                     # Non-retryable HTTP error
                     return {"success": False, "error": f"HTTP Error {e.code}: {e.reason}"}
@@ -1309,7 +1678,7 @@ class FBRefScraper:
                 if "timed out" in error_message or "timeout" in error_message:
                     retry_count += 1
                     if retry_count < max_retries:
-                        # Linear backoff for timeouts: 20s, 40s, 60s
+                        # Linear backoff for timeouts
                         wait_time = 20 * retry_count
                         self.logger.warning(f"Timeout error, waiting {wait_time}s before retry {retry_count}...")
                         time.sleep(wait_time)
