@@ -1,3 +1,6 @@
+/**
+ * `useMatches` — fixtures for dashboards, recent results, and date-sorted views.
+ */
 import { useEffect, useState } from 'react';
 import { mockMatches } from '../data/mockMatches';
 import type { Match } from '../types/match';
@@ -10,7 +13,6 @@ export interface UseMatchesResult {
   error: Error | null;
 }
 
-/** Simulates `/matches` fetch */
 export function useMatches(): UseMatchesResult {
   const [data, setData] = useState<Match[] | null>(null);
   const [loading, setLoading] = useState(true);

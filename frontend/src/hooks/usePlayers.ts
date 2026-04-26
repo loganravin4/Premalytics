@@ -1,3 +1,6 @@
+/**
+ * `usePlayers` — same contract as `useTeams`, but for the global player list (`/players`, squad tables, etc.).
+ */
 import { useEffect, useState } from 'react';
 import { mockPlayers } from '../data/mockPlayers';
 import type { Player } from '../types/player';
@@ -10,7 +13,6 @@ export interface UsePlayersResult {
   error: Error | null;
 }
 
-/** Simulates `/players` fetch */
 export function usePlayers(): UsePlayersResult {
   const [data, setData] = useState<Player[] | null>(null);
   const [loading, setLoading] = useState(true);

@@ -1,4 +1,7 @@
-/** Tailwind arbitrary color utilities per team (no inline styles in UI) */
+/**
+ * Maps `team.id` → Tailwind classes for bordered “badge” chips (see `TeamBadge`).
+ * Keeps club colors in class names so we avoid inline `style={{ backgroundColor }}` for dynamic hexes.
+ */
 export const teamAccentBoxClass: Record<string, string> = {
   arsenal: 'border-[#ef0107] bg-[#ef0107]/20',
   liverpool: 'border-[#c8102e] bg-[#c8102e]/20',
@@ -22,6 +25,7 @@ export const teamAccentBoxClass: Record<string, string> = {
   southampton: 'border-[#d71920] bg-[#d71920]/20',
 };
 
+/** Fallback for unknown IDs (e.g. future API slug not yet in the map). */
 export function getTeamAccentBoxClass(teamId: string): string {
   return teamAccentBoxClass[teamId] ?? 'border-[var(--color-border)] bg-[var(--color-surface-elevated)]';
 }
