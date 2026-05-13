@@ -11,8 +11,8 @@ WHAT THIS SCRIPT DOES:
 
 import sys                      # For sys.exit() and sys.path
 import logging                  # Structured log output
+import math
 from pathlib import Path        # Cross-platform file paths
-from datetime import date       # For is_complete logic on current season
 from typing import List, Dict   # Type hints
 
 import pandas as pd             # For reading normalized CSVs
@@ -57,6 +57,7 @@ SCHEMA_FILES = [
     SCHEMA_DIR / "03_create_player_stats.sql",
     SCHEMA_DIR / "04_create_keeper_stats.sql",
     SCHEMA_DIR / "05_create_indexes.sql",
+    SCHEMA_DIR / "06_add_match_stats.sql",
 ]
 
 CURRENT_SEASON = "2025-2026"   # The in-progress season (marked is_complete=False)
@@ -277,7 +278,6 @@ def insert_matches(conn, rows: List[Dict]) -> dict:
                 return None
             # pandas reads missing floats as NaN — convert to None for PostgreSQL
             try:
-                import math
                 if isinstance(val, float) and math.isnan(val):
                     return None
             except (TypeError, ValueError):
@@ -327,44 +327,34 @@ def insert_matches(conn, rows: List[Dict]) -> dict:
     if skipped:
         logger.warning(f"Skipped {skipped} incomplete rows before insert")
 
-    # Insert into the DB — only the columns we have data for
-    # Columns not listed (start_time, formation, etc.) will default to NULL
+    # Insert all available columns including shots, corners, fouls, cards
+    # Requires schema migration 06_add_match_stats.sql to have been run.
     sql = """
         INSERT INTO pl_data.matches (
             match_id, season_id, team_id, match_date, venue, opponent_id,
             result, goals_for, goals_against, xg_for, xg_against,
-            possession, notes
+            shots_for, shots_against,
+            shots_on_target_for, shots_on_target_against,
+            corners_for, corners_against,
+            fouls_for, fouls_against,
+            yellow_cards, red_cards
         )
         VALUES %s
         ON CONFLICT (match_id, team_id) DO NOTHING
     """
-
-    # We're inserting fewer columns than there are in db_rows tuples
-    # Let's use a more explicit column list that matches our actual data
-    sql = """
-        INSERT INTO pl_data.matches (
-            match_id, season_id, team_id, match_date, venue, opponent_id,
-            result, goals_for, goals_against, xg_for, xg_against
-        )
-        VALUES %s
-        ON CONFLICT (match_id, team_id) DO NOTHING
-    """
-
-    # Trim db_rows to only the 11 columns listed in the SQL above
-    trimmed_rows = [r[:11] for r in db_rows]   # Take first 11 values from each tuple
 
     errors = 0
     try:
         with conn.cursor() as cur:
-            execute_values(cur, sql, trimmed_rows, page_size=500)   # Insert in batches of 500
+            execute_values(cur, sql, db_rows, page_size=500)
         conn.commit()
-        logger.info(f"[OK] Inserted {len(trimmed_rows)} match rows")
+        logger.info(f"[OK] Inserted {len(db_rows)} match rows")
     except Exception as e:
         conn.rollback()
         logger.error(f"[ERROR] Batch insert failed: {e}")
         errors += 1
 
-    return {"inserted": len(trimmed_rows), "errors": errors}
+    return {"inserted": len(db_rows), "errors": errors}
 
 
 def main():

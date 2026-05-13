@@ -29,6 +29,12 @@ Thumbs.db
 ## Logs
 *.log
 
+## ML run outputs (models, metrics, coverage reports — regenerated locally)
+ml/artifacts/
+
+## pytest
+.pytest_cache/
+
 ## Data pipeline outputs (do not commit data)
 data-pipeline/data/raw/
 data-pipeline/data/static/
@@ -36,3 +42,5 @@ data-pipeline/data/static/
 ## Legacy / removed files
 data-pipeline/test_scraper.py
 data-pipeline/scraper/
+.claude/settings.local.json
+AGENTS.md

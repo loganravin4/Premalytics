@@ -276,38 +276,65 @@ class XGImporter:
             logger.warning("[XG] No xG data available — all xG values will be NULL")
             return rows    # Return rows unchanged if no xG data
 
-        matched = 0     # Count how many rows got xG values
-        unmatched = 0   # Count how many rows couldn't find a match
+        matched = 0         # rows that received xG values
+        unmatched = 0       # rows where lookup key was not found
+        null_xg_filled = 0  # rows where lookup matched but both xG values were None
+        skipped_venue = 0   # rows with missing/invalid venue field
+        sample_unmatched: list = []  # first few unmatched keys for diagnosis
 
         for row in rows:
-            date = row.get("match_date")           # e.g. "2023-08-13"
-            venue = row.get("venue")               # "Home" or "Away"
-            team = row.get("team_id")              # e.g. "Manchester City"
-            opponent = row.get("opponent_id")      # e.g. "Wolves"
+            date = row.get("match_date")
+            venue = row.get("venue")
+            team = row.get("team_id")
+            opponent = row.get("opponent_id")
+
+            if venue not in ("Home", "Away"):
+                skipped_venue += 1
+                continue
 
             if venue == "Home":
-                # For home rows: home_team = this team, away_team = opponent
                 key = (date, team, opponent)
                 xg_data = self._xg_lookup.get(key)
                 if xg_data:
-                    row["xg_for"]     = xg_data["home_xg"]   # This team's xG (home side)
-                    row["xg_against"] = xg_data["away_xg"]   # Opponent's xG (away side)
+                    row["xg_for"]     = xg_data["home_xg"]
+                    row["xg_against"] = xg_data["away_xg"]
+                    if xg_data["home_xg"] is None and xg_data["away_xg"] is None:
+                        null_xg_filled += 1
                     matched += 1
                 else:
                     unmatched += 1
+                    if len(sample_unmatched) < 5:
+                        sample_unmatched.append(key)
             else:
-                # For away rows: home_team = opponent, away_team = this team
                 key = (date, opponent, team)
                 xg_data = self._xg_lookup.get(key)
                 if xg_data:
-                    row["xg_for"]     = xg_data["away_xg"]   # This team's xG (away side)
-                    row["xg_against"] = xg_data["home_xg"]   # Opponent's xG (home side)
+                    row["xg_for"]     = xg_data["away_xg"]
+                    row["xg_against"] = xg_data["home_xg"]
+                    if xg_data["home_xg"] is None and xg_data["away_xg"] is None:
+                        null_xg_filled += 1
                     matched += 1
                 else:
                     unmatched += 1
+                    if len(sample_unmatched) < 5:
+                        sample_unmatched.append(key)
 
+        total = matched + unmatched
+        pct = matched / total * 100 if total else 0
         logger.info(
-            f"[XG] Merge complete: {matched} rows enriched, "
-            f"{unmatched} unmatched (will have NULL xG)"
+            f"[XG] Merge complete: {matched}/{total} rows enriched ({pct:.0f}%), "
+            f"{unmatched} unmatched (NULL xG)"
         )
+        if null_xg_filled:
+            logger.warning(
+                f"[XG] {null_xg_filled} matched rows have NULL home+away xG in the source CSV — "
+                f"check for incomplete data in {self.xg_csv_path.name}"
+            )
+        if skipped_venue:
+            logger.warning(f"[XG] {skipped_venue} rows skipped — missing or invalid venue field")
+        if unmatched and sample_unmatched:
+            logger.warning(
+                f"[XG] Unmatched keys (first {len(sample_unmatched)}): {sample_unmatched}\n"
+                f"    Fix: add missing team name mappings to XG_TEAM_NAME_MAP in xg_importer.py"
+            )
         return rows
