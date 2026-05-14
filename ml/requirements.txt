@@ -1,0 +1,24 @@
+# ML pipeline dependencies
+# Install in the data-pipeline venv or a dedicated ml venv:
+#   pip install -r ml/requirements.txt
+
+# Core (already in data-pipeline venv)
+numpy==2.3.3
+pandas==2.3.2
+scikit-learn==1.7.2
+scipy==1.16.1
+
+# Optional: faster gradient boosting (recommended)
+# pip install lightgbm
+# lightgbm>=4.0
+
+# Database (for DB-backed queries)
+psycopg2-binary==2.9.10
+python-dotenv==1.1.1
+
+# Visualisation (evaluation plots)
+matplotlib==3.10.6
+seaborn==0.13.2
+
+# Testing
+pytest==8.4.2
