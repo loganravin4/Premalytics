@@ -43,4 +43,3 @@ data-pipeline/data/static/
 data-pipeline/test_scraper.py
 data-pipeline/scraper/
 .claude/settings.local.json
-AGENTS.md
