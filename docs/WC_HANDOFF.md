@@ -4,7 +4,7 @@ Operational plan for three tracks. Each **ticket** below is one agent session (C
 
 ## Pivot strategy (read first)
 
-This repo **pivots to international / World Cup football**. There is **no** long-lived `ml/wc/` sidecar or “PL + WC in parallel” layout.
+This repo **pivots to international / World Cup soccer**. There is **no** long-lived `ml/wc/` sidecar or “PL + WC in parallel” layout.
 
 | Approach | Use? |
 |----------|------|
@@ -187,14 +187,33 @@ flowchart TD
 
 **Done when:** This file’s competition table filled in (section below) + branch naming agreed.
 
-### Competition table (fill in WC-00)
+### Competition table (locked in WC-00)
 
-| Competition | Seasons | Provider | Notes |
-|-------------|---------|----------|-------|
-| FIFA World Cup | 2018, 2022, 2026 | TBD | |
-| UEFA Euro | TBD | TBD | |
-| Friendlies | TBD | TBD | Down-weight in training? |
-| Qualifiers | TBD | TBD | |
+**Provider stack (recommended — free, no scraping risk):**
+- **football-data.org API** (`FOOTBALL_DATA_TOKEN`) — match outcomes + fixtures across all competitions below.
+- **StatsBomb open data** (no key required) — shot/event-level streams for WC 2018 + 2022, used by Track 2 (xG) only.
+
+| Competition | Seasons | Provider | In training? | Notes |
+|-------------|---------|----------|-------------|-------|
+| FIFA World Cup | 2018, 2022, 2026 | football-data.org + StatsBomb | **Yes** | Primary; 2026 fixtures added when live |
+| UEFA Euro | 2020 (2021), 2024 | football-data.org | **Yes** | Adds volume for European nations |
+| CONMEBOL Copa América | 2021, 2024 | football-data.org | **Yes** | Non-European national team signal |
+| Qualifiers (UEFA, CONMEBOL) | 2021–2025 | football-data.org | **Experiment** | Down-weight; quality gap vs tournament matches |
+| Friendlies | 2018–2026 | football-data.org | **Down-weight** | Config flag `FRIENDLY_WEIGHT=0.3`; kept for squad coverage |
+| Shot-level events (xG) | WC 2018, 2022 | StatsBomb open data | Track 2 only | Free JSON event streams |
+
+**Env var names:**
+```
+FOOTBALL_DATA_TOKEN=<your key>
+# StatsBomb open data: no key needed
+```
+
+**Branch naming (locked):**
+- `wc/foundation` — WC-02 through WC-04
+- `wc/match` — WC-05 through WC-07
+- `wc/xg` — XG-01 through XG-04
+- `wc/penalties` — PEN-01 through PEN-03
+- `wc/frontend` — FE-01 through FE-03
 
 ---
 
@@ -214,7 +233,7 @@ flowchart TD
 
 **Input:** Current `DATA_CONTRACT.md`, WC-01.
 
-**Output:** **`DATA_CONTRACT.md` rewritten** for international football (remove EPL-specific tables/paths):
+**Output:** **`DATA_CONTRACT.md` rewritten** for international soccer (remove EPL-specific tables/paths):
 - Dual-row format retained where still useful
 - Columns: `competition_id`, `competition_stage` (group/knockout), `is_neutral_venue`, optional `fifa_rank`
 - `match_id` format for national teams
