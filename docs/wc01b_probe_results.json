@@ -1,0 +1,10 @@
+[
+  {
+    "label": "World Cup 2022",
+    "league": "INT-World Cup",
+    "seasons": [2022],
+    "ok": true,
+    "rows": 64,
+    "note": "soccerdata 1.9.0, headless=False, Chrome required"
+  }
+]

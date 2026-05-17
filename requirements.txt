@@ -1,9 +1,12 @@
 # Database
 psycopg2-binary>=2.9.0
 
-# Data processing
-pandas>=2.0.0
-numpy>=1.24.0
+# Data processing — install in data-pipeline/venv with py -3.12 (see docs/VENV.md)
+pandas>=2.2.0,<3
+numpy>=2.1.0
+
+# International ingest (WC pivot). Requires >=1.9 (Selenium); 1.8.x gets FBref 403.
+soccerdata>=1.9.0,<2
 
 # Configuration management
 python-dotenv>=1.0.0

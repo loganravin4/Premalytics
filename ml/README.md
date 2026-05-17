@@ -30,10 +30,14 @@ python -m ml.pipeline.predict --fixtures fixtures.csv
 The ML pipeline reads directly from normalized CSVs — **no PostgreSQL required**.
 
 ```bash
-# Activate the existing venv (or create one)
-source data-pipeline/venv/Scripts/activate   # Windows: .\data-pipeline\venv\Scripts\activate
+# Canonical venv: Python 3.12 at data-pipeline/venv (see docs/VENV.md)
+py -3.12 -m venv data-pipeline/venv
+data-pipeline/venv/Scripts/pip install -r requirements.txt -r ml/requirements.txt
 
-# Install ML dependencies
+# Activate (Windows)
+.\data-pipeline\venv\Scripts\Activate.ps1
+
+# Or install ML deps only into an existing venv
 pip install -r ml/requirements.txt
 
 # Optional: faster gradient boosting

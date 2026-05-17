@@ -1,129 +1,234 @@
-# Premalytics Data Contract
+# Premalytics Data Contract — International (WC pivot)
 
 ## Overview
 
-This document describes the canonical data sources, schemas, and field definitions
-used by the ML pipeline. Any script that reads or writes data must conform to this contract.
+Canonical schemas for **national-team** match data used by the World Cup pivot.
+Any script that reads or writes pipeline data must conform to this contract.
 
-## Canonical Data Sources
+**Ingest sources** (see `docs/WC_SOURCES.md`):
 
-| Source | Type | Coverage | Used for |
-|--------|------|----------|----------|
-| football-data.co.uk | Match CSV | 2021-22 through 2025-26 | Match outcomes, shots, corners, fouls, cards, odds |
-| Understat (Kaggle CSV, optional) | Match xG CSV | 2021-22 through 2022-23 | xG enrichment (fallback) |
-| FBRef scraped CSVs (legacy) | Player/match CSV | 2021-22 through 2024-25 | xG (primary), player stats |
+| Priority | Source | Typical use |
+|----------|--------|-------------|
+| Primary (when scrape works) | soccerdata → FBref | Schedules, scores, xG aggregates, lineups |
+| Fallback | football-data.org API (free tier) | WC + Euro match results |
+| Track 2 shots | StatsBomb open data | Shot-level xG (separate table) |
+| Assess only | Archived EPL assets | Squad/club form per ASSESS-01 |
 
-**Primary pipeline (canonical):**
+**Primary pipeline (target):**
+
 ```
-01_download_match_data.py  →  02_normalize_and_export.py  →  03_load_to_db.py
+01_download_international.py  →  02_normalize_international.py  →  (optional) 03_load_to_db.py
 ```
-All ML features are derived from the normalized CSVs produced by step 02.
+
+Normalized output: **`match_logs_normalized.csv`** (same grain as legacy EPL contract).
+
+---
 
 ## File: `match_logs_normalized.csv`
 
-**Location:** `data-pipeline/data/raw/{season}/{team_slug}/match_logs_normalized.csv`
+**Location:**
 
-**One row per team per match** (dual-row format: each physical match appears twice).
+```
+data-pipeline/data/raw/{competition_id}/{season_id}/match_logs_normalized.csv
+```
+
+| Path segment | Example | Notes |
+|--------------|---------|-------|
+| `competition_id` | `fifa_world_cup`, `uefa_euro`, `copa_america` | Stable snake_case slug — see table below |
+| `season_id` | `2018`, `2022`, `2024` | Tournament year (single year); not `YYYY-YYYY` club format |
+
+**Grain:** one row per **team per match** (dual-row: each fixture appears twice).
+
+### Example rows (JSON)
+
+Same physical match: Brazil 2–0 Serbia, 2022-11-24, group stage.
+
+```json
+{
+  "match_id": "20221124_bra_srb",
+  "competition_id": "fifa_world_cup",
+  "season_id": "2022",
+  "competition_stage": "group",
+  "group_name": "G",
+  "matchday": 1,
+  "team_id": "BRA",
+  "opponent_id": "SRB",
+  "match_date": "2022-11-24",
+  "venue": "Home",
+  "is_neutral_venue": true,
+  "goals_for": 2,
+  "goals_against": 0,
+  "result": "W",
+  "xg_for": 1.8,
+  "xg_against": 0.4,
+  "shots_for": 14,
+  "shots_against": 5,
+  "sample_weight": 1.0
+}
+```
+
+```json
+{
+  "match_id": "20221124_bra_srb",
+  "competition_id": "fifa_world_cup",
+  "season_id": "2022",
+  "competition_stage": "group",
+  "group_name": "G",
+  "matchday": 1,
+  "team_id": "SRB",
+  "opponent_id": "BRA",
+  "match_date": "2022-11-24",
+  "venue": "Away",
+  "is_neutral_venue": true,
+  "goals_for": 0,
+  "goals_against": 2,
+  "result": "L",
+  "xg_for": 0.4,
+  "xg_against": 1.8,
+  "shots_for": 5,
+  "shots_against": 14,
+  "sample_weight": 1.0
+}
+```
+
+### Column definitions
 
 | Column | Type | Nullable | Notes |
 |--------|------|----------|-------|
-| match_id | str | No | `{yyyymmdd}_{home_slug}_{away_slug}`, globally unique per match |
-| season_id | str | No | `YYYY-YYYY` format (e.g., `2021-2022`) |
-| team_id | str | No | Canonical team name (e.g., `Arsenal`). **team_id = team_name** |
-| opponent_id | str | No | Canonical opponent name |
-| match_date | date | No | `YYYY-MM-DD` format |
-| venue | str | No | `Home` or `Away` (from team_id's perspective) |
-| goals_for | int | No | Goals scored by team_id |
-| goals_against | int | No | Goals conceded by team_id |
-| result | str | No | `W`, `D`, or `L` (from team_id's perspective) |
-| shots_for | int | Yes | Shots taken by team_id |
-| shots_against | int | Yes | Shots conceded by team_id |
-| shots_on_target_for | int | Yes | Shots on target by team_id |
-| shots_on_target_against | int | Yes | Shots on target conceded |
-| corners_for | int | Yes | Corners won by team_id |
-| corners_against | int | Yes | Corners conceded |
-| fouls_for | int | Yes | Fouls committed by team_id |
-| fouls_against | int | Yes | Fouls committed against team_id |
-| yellow_cards | int | Yes | Yellow cards received by team_id |
-| red_cards | int | Yes | Red cards received by team_id |
-| xg_for | float | Yes | Expected goals for team_id (NULL if source unavailable) |
-| xg_against | float | Yes | Expected goals against team_id (NULL if source unavailable) |
+| match_id | str | No | See **Match ID** below |
+| competition_id | str | No | Slug, e.g. `fifa_world_cup` |
+| season_id | str | No | Tournament year, e.g. `2022` |
+| competition_stage | str | No | `group`, `knockout`, `qualifier`, `friendly`, `final` |
+| group_name | str | Yes | e.g. `G`; NULL for knockouts / friendlies |
+| matchday | int | Yes | Round or matchday number when known |
+| team_id | str | No | **FIFA 3-letter code** (e.g. `BRA`, `ENG`) |
+| opponent_id | str | No | FIFA 3-letter code |
+| match_date | date | No | `YYYY-MM-DD` (UTC calendar date of kickoff) |
+| venue | str | No | `Home` or `Away` from `team_id` perspective |
+| is_neutral_venue | bool | No | `true` for most WC/Euro neutral-site games |
+| goals_for | int | No | Goals scored by `team_id` |
+| goals_against | int | No | Goals conceded by `team_id` |
+| result | str | No | `W`, `D`, or `L` from `team_id` perspective |
+| xg_for | float | Yes | Team xG when source provides it |
+| xg_against | float | Yes | Opponent xG |
+| shots_for | int | Yes | |
+| shots_against | int | Yes | |
+| shots_on_target_for | int | Yes | |
+| shots_on_target_against | int | Yes | |
+| corners_for | int | Yes | |
+| corners_against | int | Yes | |
+| fouls_for | int | Yes | |
+| fouls_against | int | Yes | |
+| yellow_cards | int | Yes | |
+| red_cards | int | Yes | |
+| sample_weight | float | No | Default `1.0`; use `0.3` for friendlies when configured |
+| source | str | No | `fbref`, `football_data_api`, etc. |
+| source_match_key | str | Yes | Provider fixture id for joins / debugging |
 
-## Database Schema: `pl_data.matches`
+**Display names** (e.g. `Brazil`) live in `data-pipeline/data/static/team_map_intl.csv`, not in `team_id`.
 
-**Schema:** `pl_data` (PostgreSQL)
+---
 
-All columns from `match_logs_normalized.csv` plus additional FBRef fields:
+## Competition IDs
 
-| Column | DB Type | Source |
-|--------|---------|--------|
-| match_team_id | SERIAL PK | Auto |
-| match_id | VARCHAR(50) | CSV |
-| season_id | VARCHAR(20) FK | CSV |
-| team_id | VARCHAR(50) FK | CSV (**= canonical team name**) |
-| match_date | DATE | CSV |
-| venue | VARCHAR(10) | CSV |
-| opponent_id | VARCHAR(50) FK | CSV |
-| result | CHAR(1) | CSV |
-| goals_for | INTEGER | CSV |
-| goals_against | INTEGER | CSV |
-| xg_for | DECIMAL(5,2) | CSV / FBRef |
-| xg_against | DECIMAL(5,2) | CSV / FBRef |
-| shots_for | INTEGER | CSV |
-| shots_against | INTEGER | CSV |
-| shots_on_target_for | INTEGER | CSV |
-| shots_on_target_against | INTEGER | CSV |
-| corners_for | INTEGER | CSV |
-| corners_against | INTEGER | CSV |
-| fouls_for | INTEGER | CSV |
-| fouls_against | INTEGER | CSV |
-| yellow_cards | INTEGER | CSV |
-| red_cards | INTEGER | CSV |
+| competition_id | Description | soccerdata league (if used) |
+|----------------|-------------|-----------------------------|
+| `fifa_world_cup` | FIFA World Cup | `INT-World Cup` |
+| `uefa_euro` | UEFA European Championship | `INT-European Championship` |
+| `copa_america` | Copa América | `INT-Copa America` (custom `league_dict.json`) |
+| `wcq_uefa` | UEFA World Cup qualifiers | `INT-WCQ UEFA` (custom) |
+| `wcq_conmebol` | CONMEBOL World Cup qualifiers | `INT-WCQ CONMEBOL` (custom) |
+| `uefa_nations_league` | UEFA Nations League | `INT-Nations League` (custom) |
+| `international_friendly` | Friendlies | TBD — often **Defer** |
 
-## Team ID Convention
+---
 
-**team_id is the canonical team name string.** Not a hash, not an integer.
+## Team ID convention
 
-Examples: `Arsenal`, `Manchester City`, `Nott'ham Forest`, `Newcastle Utd`
+**`team_id` = FIFA 3-letter country code** (uppercase).
 
-The canonical names are defined in `football_data_importer.py::TEAM_NAME_MAP`.
-Any script that looks up teams must use these exact strings.
+Examples: `BRA`, `ENG`, `USA`, `GER`, `CIV`
 
-## Season ID Convention
+- Aliases and display names: `data-pipeline/data/static/team_map_intl.csv`
+- Columns: `alias`, `team_id`, `team_name`
+- Importers must normalize provider names to codes before writing CSVs
 
-Format: `YYYY-YYYY` (e.g., `2021-2022`, `2024-2025`).
+---
 
-Short forms (`2021-22`) are only used internally in the downloader — they are
-always converted to the full form before storage.
+## Season ID convention
 
-## Match ID Convention
+**Single tournament year** as string: `"2018"`, `"2022"`, `"2024"`.
 
-Format: `{yyyymmdd}_{home_slug}_{away_slug}`
+- Euro 2020 played in 2021 → `season_id` = `"2020"` (tournament name year), with optional `calendar_year` in raw ingest only
+- Do not use club-style `YYYY-YYYY` in this contract
 
-- `yyyymmdd`: match date compact
-- `home_slug`: lowercase, underscored home team name (e.g., `manchester_city`)
-- `away_slug`: lowercase, underscored away team name
+---
 
-Example: `20231202_arsenal_wolves`
+## Match ID convention
 
-This is a **stable, deterministic identifier** — running the pipeline twice
-for the same raw data always produces the same match_ids.
+Format:
 
-## ML Data Splits
+```
+{yyyymmdd}_{home_team_id}_{away_team_id}
+```
 
-| Split | Seasons | Purpose |
-|-------|---------|---------|
-| Train | 2021-2022, 2022-2023 | Model fitting |
-| Validation | 2023-2024 | Hyperparameter tuning, model selection |
-| Test (holdout) | 2024-2025 | Final honest evaluation — never used during development |
+- `yyyymmdd`: kickoff date in UTC (or documented local date if UTC unavailable)
+- `home_team_id` / `away_team_id`: FIFA codes of designated home/away teams in the **fixture**
+- For neutral venues, home/away follows the provider’s designation (consistent per source)
 
-**Critical:** The holdout set must never influence any model decision.
-Test metrics are reported once, at the end.
+Example: `20221124_BRA_SRB` — store lowercase slugs in filenames if desired: `20221124_bra_srb`
+
+**Stability:** same source fixture + same home/away assignment → same `match_id`.
+
+---
+
+## ML data splits
+
+Use **chronological** boundaries by `match_date`, not random rows.
+
+| Split | Suggested scope | Purpose |
+|-------|-----------------|---------|
+| Train | WC 2018 + Euro 2020 + Copa 2021 + qualifiers (weighted) | Fit |
+| Validation | WC 2022 + Euro 2024 (or last full tournament before holdout) | Tune |
+| Test (holdout) | Reserved tournament slice or post-2024 friendlies only | One-shot eval |
+
+Exact dates live in `ml/config.py` after WC-05. **Holdout must never leak into feature engineering.**
+
+**Sample weights:**
+
+| competition_stage | Default weight |
+|-------------------|----------------|
+| `group`, `knockout`, `final` | 1.0 |
+| `qualifier` | 0.5 (experiment — tune in config) |
+| `friendly` | 0.3 (`FRIENDLY_WEIGHT` in config) |
+
+---
+
+## Shot-level data (Track 2 — separate contract)
+
+Not stored in `match_logs_normalized.csv`. See `docs/DATA_CONTRACT_SHOTS.md` (XG-01) when added.
+
+StatsBomb open data: one row per shot; join to matches on `source_match_key` or derived `match_id`.
+
+---
+
+## Database (optional, deferred)
+
+Legacy schema `pl_data` is EPL-specific. International load will use a new schema name (e.g. `intl_data`) in a later ticket — do not write new rows to `pl_data.matches`.
+
+---
 
 ## Assumptions
 
-1. A team relegated in year N does not appear in the dataset in year N+1.
-2. xG data may be NULL for some matches (especially recent seasons). Models must handle this.
-3. The first N matches of a team in a season have fewer prior matches for rolling features.
-   `min_periods=1` is used so features are never dropped, but they are less reliable early.
-4. Matches with missing `result`, `goals_for`, or `goals_against` are excluded entirely.
+1. Dual-row: each match_id appears exactly twice (once per team).
+2. `result` must agree with `goals_for` / `goals_against` for that row.
+3. Rows with missing `goals_for`, `goals_against`, or `result` are dropped.
+4. xG and shot columns may be NULL; models must tolerate NULLs.
+5. Features use only information available **before kickoff** unless a later ticket defines lineup-aware prediction time.
+6. EPL archives are **not** part of this contract until ASSESS-01 approves joins.
+
+---
+
+## Legacy EPL contract
+
+Archived on git tag `archive/epl-2025`. Previous `match_logs_normalized` EPL paths and `pl_data` docs are historical only.
