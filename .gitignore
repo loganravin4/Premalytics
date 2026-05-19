@@ -9,6 +9,8 @@
 node_modules/
 venv/
 */venv/
+.soccerdata/
+downloaded_files/
 target/
 
 ## Build / compiled outputs
@@ -38,6 +40,7 @@ ml/artifacts/
 ## Data pipeline outputs (do not commit data)
 data-pipeline/data/raw/
 data-pipeline/data/static/
+!data-pipeline/data/static/team_map_intl.csv
 
 ## Legacy / removed files
 data-pipeline/test_scraper.py

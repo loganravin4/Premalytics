@@ -1,6 +1,7 @@
 # ML pipeline dependencies
-# Install in the data-pipeline venv or a dedicated ml venv:
-#   pip install -r ml/requirements.txt
+# Install in data-pipeline/venv (Python 3.12 via py -3.12) — see docs/VENV.md:
+#   py -3.12 -m venv data-pipeline/venv
+#   data-pipeline/venv/Scripts/pip install -r requirements.txt -r ml/requirements.txt
 
 # Core (already in data-pipeline venv)
 numpy==2.3.3

@@ -28,6 +28,8 @@ Keep archived PL assets until **ASSESS-01** documents what (if anything) helps e
 
 **Branch rule:** branch from `main`. Suggested: `wc/foundation` → merge, then `wc/match`, `wc/xg`, `wc/penalties` (or one `wc/*` branch per ticket if parallel agents).
 
+**Python:** one venv at `data-pipeline/venv`, created with `py -3.12` — see **`docs/VENV.md`**.
+
 **Quality gates:**
 - ML logic: `python -m pytest ml/tests -q`
 - Train path: `python -m ml.pipeline.train`
@@ -40,7 +42,7 @@ Keep archived PL assets until **ASSESS-01** documents what (if anything) helps e
 | Area | Path | Pivot action |
 |------|------|----------------|
 | Data contract | `DATA_CONTRACT.md` | **Rewrite** for international matches (replace PL/EPL sections) |
-| Download / normalize | `data-pipeline/scripts/01_*.py`, `02_*.py` | **Replace** football-data.co.uk E0 flow with API/intl provider |
+| Download / normalize | `data-pipeline/scripts/01_*.py`, `02_*.py` | **Replace** with soccerdata → FBref international ingest |
 | Importers | `data-pipeline/soccer/importers/` | **Replace** `football_data_importer.py` usage; add provider modules |
 | Features | `ml/features/engineering.py`, `loader.py` | **Adapt** — drop league-table features; keep leakage-safe rolling/ELO |
 | Config | `ml/config.py` | **Replace** `SEASONS_*` with competition/date splits |
@@ -182,31 +184,44 @@ flowchart TD
 
 **Tasks:**
 1. Confirm competitions: WC 2018/2022/2026, Euros, qualifiers, friendlies (Y/N each).
-2. Confirm data provider(s) and API keys env var names (e.g. `STATSBOMB_API`, `FOOTBALL_DATA_TOKEN`).
+2. Confirm data provider(s): **soccerdata/FBref primary**; optional `FOOTBALL_DATA_TOKEN` fallback; `SOCCERDATA_DIR` for cache.
 3. Agree: **in-place pivot** — no parallel `ml/wc/` tree; feature branches only (`wc/match-ingest`, etc.).
 
 **Done when:** This file’s competition table filled in (section below) + branch naming agreed.
 
-### Competition table (locked in WC-00)
+### Competition table (WC-00 pivot — soccerdata / FBref, $0)
 
-**Provider stack (recommended — free, no scraping risk):**
-- **football-data.org API** (`FOOTBALL_DATA_TOKEN`) — match outcomes + fixtures across all competitions below.
-- **StatsBomb open data** (no key required) — shot/event-level streams for WC 2018 + 2022, used by Track 2 (xG) only.
+**Provider stack (revised — no paid API required):**
 
-| Competition | Seasons | Provider | In training? | Notes |
-|-------------|---------|----------|-------------|-------|
-| FIFA World Cup | 2018, 2022, 2026 | football-data.org + StatsBomb | **Yes** | Primary; 2026 fixtures added when live |
-| UEFA Euro | 2020 (2021), 2024 | football-data.org | **Yes** | Adds volume for European nations |
-| CONMEBOL Copa América | 2021, 2024 | football-data.org | **Yes** | Non-European national team signal |
-| Qualifiers (UEFA, CONMEBOL) | 2021–2025 | football-data.org | **Experiment** | Down-weight; quality gap vs tournament matches |
-| Friendlies | 2018–2026 | football-data.org | **Down-weight** | Config flag `FRIENDLY_WEIGHT=0.3`; kept for squad coverage |
-| Shot-level events (xG) | WC 2018, 2022 | StatsBomb open data | Track 2 only | Free JSON event streams |
+| Role | Tool | Cost |
+|------|------|------|
+| **Primary ingest** | [soccerdata](https://soccerdata.readthedocs.io/) → **FBref** | Free (library + cache); respect [FBref](https://www.sports-reference.com/data_use.html) / site ToS |
+| **Built-in intl leagues** | `INT-World Cup`, `INT-European Championship` in soccerdata | Confirmed in upstream `LEAGUE_DICT` |
+| **Extra intl comps** | Custom `~/soccerdata/config/league_dict.json` (Copa, qualifiers, etc.) | Free; **spike in WC-01b** — FBref comp names from [fbref.com/comps](https://fbref.com/en/comps/) |
+| **Shot-level events (Track 2)** | **StatsBomb open data** (WC 2018, 2022) | Free; coordinates + outcomes |
+| **Optional fallback** | football-data.org free tier (WC + Euro only) | $0 but **12-comp limit**; use only if soccerdata blocked — see `WC_SOURCES.md` |
+| **Archived EPL** | Local CSV / DB | Assess in ASSESS-01 only |
 
-**Env var names:**
+**Not primary:** paid football-data tiers, odds add-ons, or scraping without cache/delays.
+
+| Competition | Seasons | soccerdata league ID | In training? | Notes |
+|-------------|---------|----------------------|-------------|-------|
+| FIFA World Cup | 2018, 2022, 2026 | `INT-World Cup` | **Yes** | `read_schedule()`, team/player match stats, lineups |
+| UEFA Euro | 2020 (2021), 2024 | `INT-European Championship` | **Yes** | Euro 2020 played 2021 — use season year FBref expects |
+| CONMEBOL Copa América | 2021, 2024 | **Custom** (e.g. `INT-Copa America`) | **Yes** if WC-01b succeeds | Add to `league_dict.json`; else defer |
+| Qualifiers (UEFA, CONMEBOL) | 2021–2025 | **Custom** per confederation | **Experiment** | Down-weight; add only if FBref comp scrape works |
+| Friendlies | 2018–2026 | **Custom / TBD** | **Down-weight** | `FRIENDLY_WEIGHT=0.3`; may be sparse on FBref — assess before ingest |
+| Shot-level (xG model) | WC 2018, 2022 | StatsBomb open (not soccerdata) | Track 2 only | FBref gives match aggregates; not a full shot-coordinate feed |
+
+**Env / config (no API key for primary path):**
+```bash
+# Optional: override default cache dir (defaults to ~/soccerdata)
+SOCCERDATA_DIR=/path/to/soccerdata_cache
+SOCCERDATA_NOCACHE=false
+# Polite backfill: sleep between leagues in importer (implement in WC-03)
 ```
-FOOTBALL_DATA_TOKEN=<your key>
-# StatsBomb open data: no key needed
-```
+
+**WC-01b (new spike ticket):** Run `sd.FBref.available_leagues()`, add Copa/qualifier/friendly comps via [custom leagues](https://soccerdata.readthedocs.io/en/stable/howto/custom-leagues.html), document working `league_dict.json` entries in `WC_SOURCES.md`.
 
 **Branch naming (locked):**
 - `wc/foundation` — WC-02 through WC-04
@@ -221,11 +236,19 @@ FOOTBALL_DATA_TOKEN=<your key>
 
 ### WC-01 — Source matrix and licenses
 
-**Input:** WC-00 decisions.
+**Input:** WC-00 decisions (soccerdata pivot).
 
-**Output:** `docs/WC_SOURCES.md` with columns: provider, endpoint/file, fields, date range, license/ToS, refresh cadence.
+**Output:** `docs/WC_SOURCES.md` — soccerdata/FBref primary; StatsBomb for shot events; football-data optional.
 
 **Acceptance:** Every row has a “used for” column (outcome / shots / odds / lineups).
+
+### WC-01b — Custom international leagues spike
+
+**Input:** WC-01, [soccerdata custom leagues](https://soccerdata.readthedocs.io/en/stable/howto/custom-leagues.html).
+
+**Output:** Verified `league_dict.json` snippets + which of Copa / qualifiers / friendlies actually scrape; update `WC_SOURCES.md` matrix rows from TBD → Use/Defer/Reject.
+
+**Acceptance:** At least one successful `read_schedule()` per custom league added, or explicit Defer with error note.
 
 ---
 
@@ -241,15 +264,19 @@ FOOTBALL_DATA_TOKEN=<your key>
 
 **Acceptance:** Example row JSON in doc; no ambiguity on `team_id` (FIFA code vs full name — pick one).
 
+**Status:** Done — `DATA_CONTRACT.md` rewritten; `team_map_intl.csv` stub added.
+
 ---
 
 ### WC-03 — Download + normalize scripts
 
-**Input:** WC-02, pattern from `data-pipeline/scripts/01_download_match_data.py`, `football_data_importer.py`.
+**Input:** WC-02, WC-01b; pattern from existing pipeline scripts.
 
 **Output:**
-- Replace or repurpose `data-pipeline/scripts/01_download_match_data.py` and `02_normalize_and_export.py` for international sources
-- `data-pipeline/soccer/importers/international_importer.py` (or per-provider modules); remove EPL-only importer wiring from the default path
+- Replace `01_download` / `02_normalize` to call **soccerdata `FBref`** (`read_schedule`, `read_team_match_stats`, optional `read_lineup` / `read_player_match_stats`)
+- `data-pipeline/soccer/importers/fbref_soccerdata_importer.py` (thin wrapper: soccerdata → canonical CSV)
+- Add `soccerdata` to `data-pipeline/requirements.txt` (pin version)
+- Remove EPL-only importer from default path; keep archived importers for ASSESS-01
 - Sample fixture under `data-pipeline/data/raw/{competition}/` OR documented download command
 
 **Commands:**
@@ -340,14 +367,14 @@ python -m ml.pipeline.predict --fixtures path/to/wc_fixtures.csv
 
 ---
 
-### XG-02 — Soccerdata ingestion
+### XG-02 — Shot event ingestion
 
-**Input:** XG-01, `data-pipeline/requirements.txt` (add `soccerdata` if missing).
+**Input:** XG-01; StatsBomb open data (primary for coordinates).
 
 **Output:**
-- `data-pipeline/soccer/importers/shot_importer.py` (or `soccerdata_shots.py`)
-- `data-pipeline/scripts/shots/01_export_shots.py` → canonical CSV/Parquet
-- Config for competitions (intl/WC first); PL/club leagues **only if ASSESS-01 approves** for pretraining or plumbing validation
+- `data-pipeline/scripts/shots/01_export_statsbomb_shots.py` → canonical shots table (WC 2018, 2022)
+- Optional: FBref **team shooting** match logs via soccerdata for aggregate xG features on Track 1 (not a substitute for shot-level labels)
+- PL/club shot pretrain **only if ASSESS-01 approves**
 
 **Command:** `python data-pipeline/scripts/shots/01_export_shots.py --competition ...`
 
