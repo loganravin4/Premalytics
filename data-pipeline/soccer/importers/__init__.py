@@ -1,23 +1,31 @@
 """
 =============================================================================
 Package: soccer/importers
-Description: Static dataset importers for Premalytics data pipeline
+Description: Data entry points for the international (WC pivot) pipeline
+=============================================================================
 
-This package replaces the old FBRef/API scraping approach with a stable,
-no-scraping strategy using free public datasets:
+WHAT IS EXPORTED HERE:
+  - FBrefInternationalImporter  →  primary ingest (soccerdata → FBref)
+  - COMPETITIONS                →  registry of competition_id slugs + seasons
+  - setup_soccerdata_env        →  configure .soccerdata cache before import
 
-  1. football_data_importer.py  →  Match results from football-data.co.uk
-  2. xg_importer.py             →  xG (expected goals) from Kaggle/Understat CSV
+LEGACY (not exported):
+  football_data_importer.py  — EPL match CSVs from football-data.co.uk
+  xg_importer.py             — Understat xG merge for EPL rows
 
-These importers are the ONLY data entry point into the pipeline.
-No scraping, no anti-bot workarounds, no fragile HTML parsing.
+Those remain in the repo for archive/epl-2025 and ASSESS-01 review only.
+Scripts 01/02 on main no longer import them.
 =============================================================================
 """
 
-# Make the two importer classes importable directly from the package
-# e.g.: from soccer.importers import FootballDataImporter, XGImporter
-from .football_data_importer import FootballDataImporter
-from .xg_importer import XGImporter
+from .fbref_soccerdata_importer import (
+    COMPETITIONS,
+    FBrefInternationalImporter,
+    setup_soccerdata_env,
+)
 
-# Define what is exported when someone does: from soccer.importers import *
-__all__ = ["FootballDataImporter", "XGImporter"]
+__all__ = [
+    "COMPETITIONS",
+    "FBrefInternationalImporter",
+    "setup_soccerdata_env",
+]

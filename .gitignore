@@ -23,7 +23,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-## IDE / tool metadata
+## IDE / tool metadata (local only — do not commit)
 .vscode/
 .idea/
 .cursor/
@@ -37,9 +37,11 @@ ml/artifacts/
 ## pytest
 .pytest_cache/
 
-## Data pipeline outputs (do not commit data)
+## Data pipeline — generated data (rebuild via scripts 01 → 02)
+# All match CSVs: intl (fifa_world_cup/…) and legacy EPL (2023-2024/arsenal/…)
 data-pipeline/data/raw/
-data-pipeline/data/static/
+# Static downloads (football-data.co.uk E0, xg CSVs, etc.) — except team map below
+data-pipeline/data/static/*
 !data-pipeline/data/static/team_map_intl.csv
 
 ## Legacy / removed files

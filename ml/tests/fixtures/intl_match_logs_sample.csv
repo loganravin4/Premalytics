@@ -1,0 +1,11 @@
+match_id,competition_id,season_id,competition_stage,group_name,matchday,match_date,is_neutral_venue,sample_weight,source,source_match_key,xg_for,xg_against,shots_for,shots_against,shots_on_target_for,shots_on_target_against,corners_for,corners_against,fouls_for,fouls_against,yellow_cards,red_cards,team_id,opponent_id,venue,goals_for,goals_against,result
+20221120_qat_ecu,fifa_world_cup,2022,group,,1.0,2022-11-20,True,1.0,fbref,1b2886ce,,,,,,,,,,,,,ECU,QAT,Away,2,0,W
+20221120_qat_ecu,fifa_world_cup,2022,group,,1.0,2022-11-20,True,1.0,fbref,1b2886ce,,,,,,,,,,,,,QAT,ECU,Home,0,2,L
+20221121_eng_irn,fifa_world_cup,2022,group,,1.0,2022-11-21,True,1.0,fbref,d8a472c1,,,,,,,,,,,,,ENG,IRN,Home,6,2,W
+20221121_eng_irn,fifa_world_cup,2022,group,,1.0,2022-11-21,True,1.0,fbref,d8a472c1,,,,,,,,,,,,,IRN,ENG,Away,2,6,L
+20221121_sen_ned,fifa_world_cup,2022,group,,1.0,2022-11-21,True,1.0,fbref,21eb041c,,,,,,,,,,,,,NED,SEN,Away,2,0,W
+20221121_sen_ned,fifa_world_cup,2022,group,,1.0,2022-11-21,True,1.0,fbref,21eb041c,,,,,,,,,,,,,SEN,NED,Home,0,2,L
+20221121_usa_wal,fifa_world_cup,2022,group,,1.0,2022-11-21,True,1.0,fbref,9de4c4cc,,,,,,,,,,,,,USA,WAL,Home,1,1,D
+20221121_usa_wal,fifa_world_cup,2022,group,,1.0,2022-11-21,True,1.0,fbref,9de4c4cc,,,,,,,,,,,,,WAL,USA,Away,1,1,D
+20221218_arg_fra,fifa_world_cup,2022,final,,,2022-12-18,True,1.0,fbref,7140acae,,,,,,,,,,,,,ARG,FRA,Home,3,3,D
+20221218_arg_fra,fifa_world_cup,2022,final,,,2022-12-18,True,1.0,fbref,7140acae,,,,,,,,,,,,,FRA,ARG,Away,3,3,D

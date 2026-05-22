@@ -26,6 +26,16 @@ REQUIRED_COLS = [
     "match_date", "venue", "goals_for", "goals_against", "result",
 ]
 
+# International contract (WC pivot) — present on new CSVs, absent on legacy EPL files.
+# validate_data_contract() auto-detects international data when competition_id exists.
+INTL_COLS = [
+    "competition_id",       # e.g. fifa_world_cup
+    "competition_stage",    # group | knockout | final | qualifier | friendly
+    "is_neutral_venue",     # bool — most WC/Euro matches are neutral-site
+    "sample_weight",        # training weight (friendlies down-weighted in ingest)
+    "source",               # provenance: fbref, football_data_api, etc.
+]
+
 NUMERIC_COLS = [
     "goals_for", "goals_against",
     "shots_for", "shots_against",
@@ -405,16 +415,22 @@ def _log_xg_coverage(df: pd.DataFrame) -> dict:
 
 def validate_data_contract(df: pd.DataFrame) -> dict:
     """
-    Run all data contract checks and return a summary dict.
-    Raises ValueError if critical checks fail.
+    Run DATA_CONTRACT.md checks and return a summary dict.
+
+    Supports two shapes:
+      - International (WC pivot): competition_id column, FIFA team_id codes
+      - Legacy EPL: club names as team_id, ~38 matches per team per season
+
+    Raises ValueError if critical checks fail (missing columns, bad codes, etc.).
+    Warnings (sparse seasons, high NULL xG) do not fail validation.
 
     Returns:
-        dict with keys: passed, warnings, errors
+        dict with keys: passed, total_rows, warnings, errors
     """
     errors   = []
     warnings = []
 
-    # 1. Required columns
+    # --- 1. Required columns (same for EPL and international) ---
     for col in REQUIRED_COLS:
         if col not in df.columns:
             errors.append(f"Missing required column: {col!r}")
@@ -422,17 +438,36 @@ def validate_data_contract(df: pd.DataFrame) -> dict:
     if errors:
         raise ValueError(f"Data contract violations: {errors}")
 
-    # 2. Row counts per season
-    # Each team plays 38 matches and contributes 1 row per match → n_teams * 38 total
-    for season, grp in df.groupby("season_id"):
-        n_teams  = grp["team_id"].nunique()
-        n_rows   = len(grp)
-        expected = n_teams * 38  # one row per team per match (dual-row format)
-        if n_rows < expected * 0.8:
-            warnings.append(
-                f"{season}: only {n_rows} rows for {n_teams} teams "
-                f"(expected ~{expected})"
-            )
+    # --- 2. Row counts — different expectations per data shape ---
+    is_intl = "competition_id" in df.columns
+    if is_intl:
+        # Each match_id should appear exactly twice (home row + away row)
+        for (comp, season), grp in df.groupby(["competition_id", "season_id"]):
+            n_matches = grp["match_id"].nunique()
+            n_rows = len(grp)
+            expected = n_matches * 2
+            if n_rows < expected:
+                warnings.append(
+                    f"{comp}/{season}: {n_rows} rows but expected {expected} "
+                    f"({n_matches} matches × 2)"
+                )
+        # International team_id must be FIFA 3-letter codes (BRA, ENG, …)
+        bad_codes = df[
+            ~df["team_id"].astype(str).str.fullmatch(r"[A-Z]{3}", na=False)
+        ]
+        if len(bad_codes):
+            errors.append(f"{len(bad_codes)} rows with non-FIFA team_id codes")
+    else:
+        # EPL: ~20 teams × 38 matches ≈ 760 rows per season (dual-row)
+        for season, grp in df.groupby("season_id"):
+            n_teams = grp["team_id"].nunique()
+            n_rows = len(grp)
+            expected = n_teams * 38
+            if n_rows < expected * 0.8:
+                warnings.append(
+                    f"{season}: only {n_rows} rows for {n_teams} teams "
+                    f"(expected ~{expected})"
+                )
 
     # 3. Duplicate match-team combinations
     dupes = df.duplicated(subset=["match_id", "team_id"]).sum()
@@ -451,6 +486,15 @@ def validate_data_contract(df: pd.DataFrame) -> dict:
         errors.append(f"{bad_result} rows with invalid result")
     if bad_venue:
         errors.append(f"{bad_venue} rows with invalid venue")
+
+    # 5b. Result must match goals_for / goals_against on each row
+    result_consistent = (
+        ((df["result"] == "W") & (df["goals_for"] > df["goals_against"])) |
+        ((df["result"] == "D") & (df["goals_for"] == df["goals_against"])) |
+        ((df["result"] == "L") & (df["goals_for"] < df["goals_against"]))
+    )
+    if (~result_consistent).sum():
+        errors.append(f"{(~result_consistent).sum()} rows with inconsistent result/goals")
 
     # 6. xG range sanity
     if "xg_for" in df.columns:
