@@ -14,11 +14,13 @@ Any script that reads or writes pipeline data must conform to this contract.
 | Track 2 shots | StatsBomb open data | Shot-level xG (separate table) |
 | Assess only | Archived EPL assets | Squad/club form per ASSESS-01 |
 
-**Primary pipeline (target):**
+**Primary pipeline:**
 
 ```
-01_download_international.py  →  02_normalize_international.py  →  (optional) 03_load_to_db.py
+01_download_match_data.py  →  02_normalize_and_export.py  →  (optional) 03_load_to_db.py
 ```
+
+Uses `soccerdata` → FBref via `data-pipeline/soccer/importers/fbref_soccerdata_importer.py`.
 
 Normalized output: **`match_logs_normalized.csv`** (same grain as legacy EPL contract).
 
