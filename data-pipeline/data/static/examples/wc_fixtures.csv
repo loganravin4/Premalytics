@@ -1,24 +1,25 @@
-# WC 2026 group-stage fixtures (3 full groups, 18 matches). All neutral-site.
-# NOTE: group assignments and match dates are APPROXIMATE / illustrative — they
-# could not be verified against the official Dec 2025 draw offline. Replace with
-# the verified draw + official schedule before any production use. Team codes are
-# real FIFA codes from team_map_intl.csv so predict.py runs end-to-end.
+# 2026 FIFA World Cup group-stage fixtures — Groups A, D, I (3 complete groups, 18 matches).
+# All matches neutral-site. Dates and matchups confirmed from Wikipedia:
+#   https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_A
+#   https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_D
+#   https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_I
+# Team codes are FIFA 3-letter codes from team_map_intl.csv.
 match_date,home_team,away_team,is_neutral_venue,competition_id,competition_stage
-2026-06-11,MEX,SEN,true,fifa_world_cup,group
-2026-06-11,KOR,NOR,true,fifa_world_cup,group
-2026-06-17,MEX,KOR,true,fifa_world_cup,group
-2026-06-17,SEN,NOR,true,fifa_world_cup,group
-2026-06-24,MEX,NOR,true,fifa_world_cup,group
-2026-06-24,SEN,KOR,true,fifa_world_cup,group
-2026-06-12,ARG,AUS,true,fifa_world_cup,group
-2026-06-12,POL,TUN,true,fifa_world_cup,group
-2026-06-18,ARG,POL,true,fifa_world_cup,group
-2026-06-18,AUS,TUN,true,fifa_world_cup,group
-2026-06-25,ARG,TUN,true,fifa_world_cup,group
-2026-06-25,AUS,POL,true,fifa_world_cup,group
-2026-06-13,FRA,MAR,true,fifa_world_cup,group
-2026-06-13,JPN,CRC,true,fifa_world_cup,group
-2026-06-19,FRA,JPN,true,fifa_world_cup,group
-2026-06-19,MAR,CRC,true,fifa_world_cup,group
-2026-06-26,FRA,CRC,true,fifa_world_cup,group
-2026-06-26,MAR,JPN,true,fifa_world_cup,group
+2026-06-11,MEX,RSA,true,fifa_world_cup,group
+2026-06-11,KOR,CZE,true,fifa_world_cup,group
+2026-06-18,CZE,RSA,true,fifa_world_cup,group
+2026-06-18,MEX,KOR,true,fifa_world_cup,group
+2026-06-24,CZE,MEX,true,fifa_world_cup,group
+2026-06-24,RSA,KOR,true,fifa_world_cup,group
+2026-06-12,USA,PAR,true,fifa_world_cup,group
+2026-06-13,AUS,TUR,true,fifa_world_cup,group
+2026-06-19,USA,AUS,true,fifa_world_cup,group
+2026-06-19,TUR,PAR,true,fifa_world_cup,group
+2026-06-25,TUR,USA,true,fifa_world_cup,group
+2026-06-25,PAR,AUS,true,fifa_world_cup,group
+2026-06-16,FRA,SEN,true,fifa_world_cup,group
+2026-06-16,IRQ,NOR,true,fifa_world_cup,group
+2026-06-22,FRA,IRQ,true,fifa_world_cup,group
+2026-06-22,NOR,SEN,true,fifa_world_cup,group
+2026-06-26,NOR,FRA,true,fifa_world_cup,group
+2026-06-26,SEN,IRQ,true,fifa_world_cup,group
