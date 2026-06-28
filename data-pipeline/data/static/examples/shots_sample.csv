@@ -1,0 +1,6 @@
+shot_id,match_id,competition_id,season_id,match_date,team_id,player_id,player_name,position,minute,distance_m,angle_deg,body_part,situation,is_goal,is_penalty,under_pressure,assist_type
+e1a2b3c4-0001-4f00-9a01-000000000001,20221218_arg_fra,fifa_world_cup,2022,2022-12-18,ARG,5503,Lionel Messi,RW,23,10.97,0.0,right_foot,penalty,True,True,False,none
+e1a2b3c4-0002-4f00-9a01-000000000002,20221218_arg_fra,fifa_world_cup,2022,2022-12-18,FRA,3009,Kylian Mbappe,ST,81,11.4,12.3,left_foot,open_play,True,False,True,pass
+f2b3c4d5-0003-4f00-9a01-000000000003,20221213_arg_cro,fifa_world_cup,2022,2022-12-13,ARG,40724,Julian Alvarez,ST,39,16.8,8.5,right_foot,counter,True,False,False,none
+a3c4d5e6-0004-4f00-9a01-000000000004,20221210_eng_fra,fifa_world_cup,2022,2022-12-10,ENG,3094,Harry Maguire,CB,57,6.2,22.0,head,set_piece,False,False,True,cross
+b4d5e6f7-0005-4f00-9a01-000000000005,20221124_bra_srb,fifa_world_cup,2022,2022-11-24,BRA,3194,Richarlison,ST,73,9.5,15.4,right_foot,open_play,True,False,False,cross
