@@ -6,18 +6,12 @@ behaves identically when run in isolation or as part of a pipeline.
 
 Split strategy
 --------------
-Splits are competition- and date-based, never EPL season strings like
-"2021-2022". The international match data on disk is two World Cups:
-
-    data-pipeline/data/raw/fifa_world_cup/2018/match_logs_normalized.csv
-    data-pipeline/data/raw/fifa_world_cup/2022/match_logs_normalized.csv
-
-- WC 2018 (64 matches, 128 dual-rows) ran Jun-Jul 2018  -> TRAINING set.
-- WC 2022 (64 matches, 128 dual-rows) ran Nov-Dec 2022  -> EVAL set.
-
-The boundary is purely chronological (no shuffling, no random split):
-everything with match_date < TRAIN_CUTOFF_DATE is training (WC 2018);
-the eval window closes at EVAL_CUTOFF_DATE, the WC 2022 final.
+Splits are competition- and date-based, never EPL season strings. The corpus
+on disk spans FIFA World Cup 2014/2018/2022 and UEFA Euro 2016/2020/2024
+(copa_america is wired in COMPETITIONS_TRAIN but not yet ingested). The split
+is purely chronological at TRAIN_CUTOFF_DATE (no shuffling): match_date <
+cutoff trains (WC 2014, WC 2018, Euro 2016, Euro 2020); match_date >= cutoff
+is eval (WC 2022, Euro 2024), with EVAL_CUTOFF_DATE marking the WC 2022 final.
 """
 
 from pathlib import Path
@@ -39,9 +33,12 @@ RANDOM_SEED = 42
 # ---------------------------------------------------------------------------
 # Splits (competition- and date-based — never season strings, never shuffled)
 # ---------------------------------------------------------------------------
-# Competitions included in the training corpus. Only fifa_world_cup is on
-# disk today; uefa_euro / friendlies ingest are future tickets.
-COMPETITIONS_TRAIN = ["fifa_world_cup"]
+# Competitions included in the training corpus. fifa_world_cup (2014/2018/
+# 2022) and uefa_euro (2016/2020/2024) are on disk. copa_america is wired
+# for when its custom-league FBref ingest is fixed (WC-01b); until then the
+# loader skips the missing dir with a warning. uefa_nations_league is omitted
+# until that data actually lands.
+COMPETITIONS_TRAIN = ["fifa_world_cup", "uefa_euro", "copa_america"]
 
 # Chronological boundary between the training and eval windows.
 # WC 2018 (Jun-Jul 2018) falls before the cutoff -> training.
