@@ -4,7 +4,7 @@ Tests: DATA_CONTRACT.md validation (ml.features.loader.validate_data_contract)
 =============================================================================
 
 Covers:
-  - Legacy EPL-shaped DataFrames (club names, no competition_id)
+  - DataFrames without competition_id (legacy no-competition validation path)
   - International fixture from ml/tests/fixtures/intl_match_logs_sample.csv
     (FIFA codes, dual-row, competition_id — produced by WC-03 ingest)
 =============================================================================
@@ -24,10 +24,11 @@ FIXTURE_PATH = Path(__file__).parent / "fixtures" / "intl_match_logs_sample.csv"
 
 def _minimal_valid_df(n: int = 10) -> pd.DataFrame:
     """
-    Build a tiny synthetic EPL-era DataFrame that passes validate_data_contract.
+    Build a tiny synthetic DataFrame (no competition_id) that passes validate_data_contract.
 
-    Uses club names as team_id (pre-pivot convention) and cycles W/D/L results
-    with matching goals so result/goals consistency checks pass.
+    Uses FIFA codes as team_id and omits competition_id to exercise the legacy
+    no-competition validation branch; cycles W/D/L results with matching goals
+    so result/goals consistency checks pass.
     """
     dates = pd.date_range("2021-08-14", periods=n, freq="7D")
     cycle = ["W", "D", "L"]
@@ -49,9 +50,9 @@ def _minimal_valid_df(n: int = 10) -> pd.DataFrame:
 
     return pd.DataFrame({
         "match_id": [f"m{i:03d}" for i in range(n)],
-        "season_id": ["2021-2022"] * n,
-        "team_id": ["Arsenal"] * n,
-        "opponent_id": ["Chelsea"] * n,
+        "season_id": ["2022"] * n,
+        "team_id": ["BRA"] * n,
+        "opponent_id": ["ARG"] * n,
         "match_date": dates,
         "venue": ["Home" if i % 2 == 0 else "Away" for i in range(n)],
         "result": results[:n],
@@ -151,7 +152,7 @@ class TestContractFailures:
 
 class TestRowCountWarnings:
     def test_sparse_season_generates_warning(self):
-        """Fewer than ~80% of expected EPL rows should warn, not fail."""
+        """Fewer than ~80% of expected rows (no-competition branch) should warn, not fail."""
         df = _minimal_valid_df(n=5)
         result = validate_data_contract(df)
         assert result["passed"] is True

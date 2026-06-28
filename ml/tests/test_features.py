@@ -26,7 +26,7 @@ from ml.config import TARGET_COL, ELO_INITIAL, ELO_K_FACTOR
 # Fixtures
 # ---------------------------------------------------------------------------
 
-def _make_team_df(n: int = 15, team: str = "Arsenal", opponent: str = "Chelsea") -> pd.DataFrame:
+def _make_team_df(n: int = 15, team: str = "BRA", opponent: str = "ARG") -> pd.DataFrame:
     """
     Create a synthetic single-team DataFrame with n matches in chronological order.
     """
@@ -37,7 +37,7 @@ def _make_team_df(n: int = 15, team: str = "Arsenal", opponent: str = "Chelsea")
 
     return pd.DataFrame({
         "match_id":    [f"m{i:03d}" for i in range(n)],
-        "season_id":   ["2021-2022"] * n,
+        "season_id":   ["2022"] * n,
         "team_id":     [team] * n,
         "opponent_id": [opponent] * n,
         "match_date":  dates,
@@ -60,10 +60,10 @@ def _make_dual_row_df(n_per_team: int = 15) -> pd.DataFrame:
     """
     Create a dual-row DataFrame with two teams, n_per_team matches each.
     """
-    home_df = _make_team_df(n_per_team, team="Arsenal", opponent="Chelsea")
+    home_df = _make_team_df(n_per_team, team="BRA", opponent="ARG")
     home_df["venue"] = "Home"
 
-    away_df = _make_team_df(n_per_team, team="Chelsea", opponent="Arsenal")
+    away_df = _make_team_df(n_per_team, team="ARG", opponent="BRA")
     away_df["venue"] = "Away"
     away_df["result"] = home_df["result"].map({"W": "L", "D": "D", "L": "W"})
     away_df["goals_for"], away_df["goals_against"] = home_df["goals_against"].copy(), home_df["goals_for"].copy()
@@ -155,9 +155,9 @@ class TestDataQuality:
         # Create intentionally bad row
         df = pd.DataFrame({
             "match_id":    ["m001"],
-            "season_id":   ["2021-2022"],
-            "team_id":     ["Arsenal"],
-            "opponent_id": ["Chelsea"],
+            "season_id":   ["2022"],
+            "team_id":     ["BRA"],
+            "opponent_id": ["ARG"],
             "match_date":  [pd.Timestamp("2021-08-14")],
             "venue":       ["Home"],
             "result":      ["W"],
@@ -170,9 +170,9 @@ class TestDataQuality:
     def test_negative_goals_dropped(self):
         df = pd.DataFrame({
             "match_id":    ["m001"],
-            "season_id":   ["2021-2022"],
-            "team_id":     ["Arsenal"],
-            "opponent_id": ["Chelsea"],
+            "season_id":   ["2022"],
+            "team_id":     ["BRA"],
+            "opponent_id": ["ARG"],
             "match_date":  [pd.Timestamp("2021-08-14")],
             "venue":       ["Home"],
             "result":      ["W"],
@@ -184,8 +184,8 @@ class TestDataQuality:
 
     def test_duplicate_removal(self):
         base = {
-            "match_id": "m001", "season_id": "2021-2022",
-            "team_id": "Arsenal", "opponent_id": "Chelsea",
+            "match_id": "m001", "season_id": "2022",
+            "team_id": "BRA", "opponent_id": "ARG",
             "match_date": pd.Timestamp("2021-08-14"),
             "venue": "Home", "result": "W",
             "goals_for": 2, "goals_against": 0,
@@ -197,9 +197,9 @@ class TestDataQuality:
     def test_invalid_result_dropped(self):
         df = pd.DataFrame({
             "match_id":    ["m001"],
-            "season_id":   ["2021-2022"],
-            "team_id":     ["Arsenal"],
-            "opponent_id": ["Chelsea"],
+            "season_id":   ["2022"],
+            "team_id":     ["BRA"],
+            "opponent_id": ["ARG"],
             "match_date":  [pd.Timestamp("2021-08-14")],
             "venue":       ["Home"],
             "result":      ["X"],   # invalid
@@ -266,15 +266,15 @@ class TestPivot:
 class TestChronologicalSplit:
     def test_train_features_do_not_use_test_data(self):
         """
-        Critical: if we split at 2023-2024, training features must not
-        contain any information from 2023-2024 match outcomes.
+        Critical: when we split chronologically, training features must not
+        contain any information from the later tournament's match outcomes.
         """
         df = _make_dual_row_df(n_per_team=14)
 
-        # Assign two seasons
+        # Assign two tournament seasons (single-year WC/Euro season_id format)
         mid = len(df) // 2
-        df.loc[df.index[:mid], "season_id"] = "2021-2022"
-        df.loc[df.index[mid:], "season_id"] = "2022-2023"
+        df.loc[df.index[:mid], "season_id"] = "2021"
+        df.loc[df.index[mid:], "season_id"] = "2022"
         # Fix dates so season 1 is clearly before season 2
         df.loc[df.index[:mid], "match_date"] = pd.date_range("2021-08-14", periods=mid, freq="7D")
         df.loc[df.index[mid:], "match_date"] = pd.date_range("2022-08-14", periods=len(df)-mid, freq="7D")
@@ -282,8 +282,8 @@ class TestChronologicalSplit:
         df_features = build_team_features(df)
         df_matches  = pivot_to_match_rows(df_features)
 
-        train = df_matches[df_matches["season_id"] == "2021-2022"]
-        test  = df_matches[df_matches["season_id"] == "2022-2023"]
+        train = df_matches[df_matches["season_id"] == "2021"]
+        test  = df_matches[df_matches["season_id"] == "2022"]
 
         assert train["match_date"].max() < test["match_date"].min(), \
             "All training matches must precede all test matches"
@@ -295,7 +295,7 @@ class TestChronologicalSplit:
 
 def _make_all_wins_dual_df(n: int = 6) -> pd.DataFrame:
     """
-    Dual-row DataFrame where Arsenal (Home) beats Chelsea (Away) in every match.
+    Dual-row DataFrame where BRA (Home) beats ARG (Away) in every match.
     All matches on distinct weekly dates.
     """
     dates   = pd.date_range("2021-08-14", periods=n, freq="7D")
@@ -304,9 +304,9 @@ def _make_all_wins_dual_df(n: int = 6) -> pd.DataFrame:
 
     home_df = pd.DataFrame({
         "match_id":      [f"m{i:03d}" for i in range(n)],
-        "season_id":     ["2021-2022"] * n,
-        "team_id":       ["Arsenal"] * n,
-        "opponent_id":   ["Chelsea"] * n,
+        "season_id":     ["2022"] * n,
+        "team_id":       ["BRA"] * n,
+        "opponent_id":   ["ARG"] * n,
         "match_date":    dates,
         "venue":         ["Home"] * n,
         "result":        ["W"] * n,
@@ -322,8 +322,8 @@ def _make_all_wins_dual_df(n: int = 6) -> pd.DataFrame:
         "corners_against": [2] * n,
     })
     away_df = home_df.copy()
-    away_df["team_id"]     = "Chelsea"
-    away_df["opponent_id"] = "Arsenal"
+    away_df["team_id"]     = "ARG"
+    away_df["opponent_id"] = "BRA"
     away_df["venue"]       = "Away"
     away_df["result"]      = "L"
     away_df["goals_for"]   = goals_a
@@ -357,17 +357,17 @@ class TestEloLeakage:
         df = _make_all_wins_dual_df(n=3)
         result = compute_elo_features(df)
 
-        arsenal = result[result["team_id"] == "Arsenal"].sort_values("match_date")
+        bra = result[result["team_id"] == "BRA"].sort_values("match_date")
         expected = ELO_INITIAL + ELO_K_FACTOR * 0.5   # win vs equal opponent
-        assert arsenal.iloc[1]["elo"] == pytest.approx(expected, abs=1e-6), \
+        assert bra.iloc[1]["elo"] == pytest.approx(expected, abs=1e-6), \
             "ELO at match 1 must reflect only the match-0 win, not the match-1 outcome"
 
     def test_elo_increases_monotonically_for_unbeaten_team(self):
         df = _make_all_wins_dual_df(n=6)
         result = compute_elo_features(df)
 
-        arsenal = result[result["team_id"] == "Arsenal"].sort_values("match_date")
-        elos = arsenal["elo"].tolist()
+        bra = result[result["team_id"] == "BRA"].sort_values("match_date")
+        elos = bra["elo"].tolist()
         for i in range(1, len(elos)):
             assert elos[i] > elos[i - 1], \
                 f"ELO should rise after every win: match {i} ({elos[i]:.2f}) <= match {i-1} ({elos[i-1]:.2f})"
@@ -376,8 +376,8 @@ class TestEloLeakage:
         df = _make_all_wins_dual_df(n=6)
         result = compute_elo_features(df)
 
-        chelsea = result[result["team_id"] == "Chelsea"].sort_values("match_date")
-        elos = chelsea["elo"].tolist()
+        arg = result[result["team_id"] == "ARG"].sort_values("match_date")
+        elos = arg["elo"].tolist()
         for i in range(1, len(elos)):
             assert elos[i] < elos[i - 1], \
                 f"ELO should fall after every loss: match {i} ({elos[i]:.2f}) >= match {i-1} ({elos[i-1]:.2f})"
@@ -389,26 +389,26 @@ class TestEloLeakage:
         """
         same_date = pd.Timestamp("2021-09-01")
         rows = [
-            {"match_id": "m001", "season_id": "2021-2022", "team_id": "Arsenal",
-             "opponent_id": "Chelsea", "match_date": same_date, "venue": "Home",
+            {"match_id": "m001", "season_id": "2022", "team_id": "BRA",
+             "opponent_id": "ARG", "match_date": same_date, "venue": "Home",
              "result": "W", "goals_for": 2, "goals_against": 0,
              "xg_for": 2.0, "xg_against": 0.3, "shots_for": 10, "shots_against": 4,
              "shots_on_target_for": 5, "shots_on_target_against": 2,
              "corners_for": 4, "corners_against": 2},
-            {"match_id": "m001", "season_id": "2021-2022", "team_id": "Chelsea",
-             "opponent_id": "Arsenal", "match_date": same_date, "venue": "Away",
+            {"match_id": "m001", "season_id": "2022", "team_id": "ARG",
+             "opponent_id": "BRA", "match_date": same_date, "venue": "Away",
              "result": "L", "goals_for": 0, "goals_against": 2,
              "xg_for": 0.3, "xg_against": 2.0, "shots_for": 4, "shots_against": 10,
              "shots_on_target_for": 2, "shots_on_target_against": 5,
              "corners_for": 2, "corners_against": 4},
-            {"match_id": "m002", "season_id": "2021-2022", "team_id": "Liverpool",
-             "opponent_id": "Manchester City", "match_date": same_date, "venue": "Home",
+            {"match_id": "m002", "season_id": "2022", "team_id": "FRA",
+             "opponent_id": "GER", "match_date": same_date, "venue": "Home",
              "result": "W", "goals_for": 3, "goals_against": 1,
              "xg_for": 2.5, "xg_against": 1.0, "shots_for": 14, "shots_against": 8,
              "shots_on_target_for": 7, "shots_on_target_against": 3,
              "corners_for": 6, "corners_against": 3},
-            {"match_id": "m002", "season_id": "2021-2022", "team_id": "Manchester City",
-             "opponent_id": "Liverpool", "match_date": same_date, "venue": "Away",
+            {"match_id": "m002", "season_id": "2022", "team_id": "GER",
+             "opponent_id": "FRA", "match_date": same_date, "venue": "Away",
              "result": "L", "goals_for": 1, "goals_against": 3,
              "xg_for": 1.0, "xg_against": 2.5, "shots_for": 8, "shots_against": 14,
              "shots_on_target_for": 3, "shots_on_target_against": 7,
@@ -438,10 +438,10 @@ class TestEloLeakage:
         df = _make_all_wins_dual_df(n=8)
         df_features = build_features(df, include_h2h=False)
 
-        # By match 3 Arsenal should have higher ELO than Chelsea
+        # By match 3 BRA should have higher ELO than ARG
         later_matches = df_features.sort_values("match_date").iloc[3:]
         assert (later_matches["home_elo"] > later_matches["away_elo"]).all(), \
-            "Arsenal (home, unbeaten) should have higher ELO than Chelsea (away, winless) by match 3"
+            "BRA (home, unbeaten) should have higher ELO than ARG (away, winless) by match 3"
 
 
 # ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 
-from ml.config import DATA_DIR, SEASONS_ALL, ARTIFACTS_DIR
+from ml.config import DATA_DIR, COMPETITIONS_TRAIN, ARTIFACTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +197,37 @@ def _load_fbref_xg(data_dir: Path, seasons: list[str]) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Layout detection
+# ---------------------------------------------------------------------------
+
+def _detect_layout(entry_dir: Path) -> str:
+    """
+    Inspect a top-level data directory and decide which on-disk layout it uses.
+
+    WC layout (flat) — CSV sits directly under the year directory:
+        {entry}/{year}/match_logs_normalized.csv
+        e.g. data/raw/fifa_world_cup/2018/match_logs_normalized.csv
+
+    EPL layout (nested) — CSV sits under a team subdirectory:
+        {entry}/{child}/{TeamName}/match_logs_normalized.csv
+
+    Returns "wc" or "epl". Defaults to "wc" when nothing is found (the empty
+    case is handled by the caller, which raises on zero loaded rows).
+    """
+    for child in sorted(entry_dir.iterdir()):
+        if not child.is_dir():
+            continue
+        # WC: the normalized CSV lives directly inside this child (a year dir).
+        if (child / "match_logs_normalized.csv").exists():
+            return "wc"
+        # EPL: the normalized CSV lives one level deeper, under team subdirs.
+        for team_dir in child.iterdir():
+            if team_dir.is_dir() and (team_dir / "match_logs_normalized.csv").exists():
+                return "epl"
+    return "wc"
+
+
+# ---------------------------------------------------------------------------
 # Primary loader
 # ---------------------------------------------------------------------------
 
@@ -211,51 +242,81 @@ def load_raw_matches(
     One row per team per match (dual-row format). The caller is responsible
     for pivoting to single-row-per-match format for model training.
 
+    Two on-disk layouts are auto-detected per top-level directory (see
+    _detect_layout): the flat WC layout ({competition}/{year}/CSV) and the
+    nested EPL layout ({season}/{year}/{team}/CSV). FBRef xG enrichment only
+    applies to the EPL layout — WC CSVs carry xG inline.
+
     Args:
-        seasons:   List of season IDs to load (default: all).
+        seasons:   Top-level dirs to load — WC competition ids (e.g.
+                   "fifa_world_cup") or EPL season ids (default: COMPETITIONS_TRAIN).
         data_dir:  Root of the raw data directory.
-        enrich_xg: If True, fill NULL xg_for/xg_against from FBRef CSVs.
+        enrich_xg: If True, fill NULL xg_for/xg_against from FBRef CSVs (EPL only).
 
     Returns:
         DataFrame with standardized dtypes and validated rows.
     """
     if seasons is None:
-        seasons = SEASONS_ALL
+        seasons = COMPETITIONS_TRAIN
 
-    dfs = []
-    for season in seasons:
-        season_dir = data_dir / season
-        if not season_dir.exists():
-            logger.warning(f"Season directory not found: {season_dir}")
+    def _read_csv(csv_path: Path) -> None:
+        try:
+            dfs.append(pd.read_csv(csv_path, low_memory=False))
+        except Exception as e:
+            logger.warning(f"Failed to read {csv_path}: {e}")
+
+    dfs: list[pd.DataFrame] = []
+    layouts: set[str] = set()
+    for entry in seasons:
+        entry_dir = data_dir / entry
+        if not entry_dir.exists():
+            logger.warning(f"Data directory not found: {entry_dir}")
             continue
 
-        for team_dir in sorted(season_dir.iterdir()):
-            if not team_dir.is_dir():
-                continue
-            csv_path = team_dir / "match_logs_normalized.csv"
-            if not csv_path.exists():
-                continue
+        layout = _detect_layout(entry_dir)
+        layouts.add(layout)
+        logger.info(f"Loading {entry!r}: detected {layout.upper()} layout")
 
-            try:
-                df = pd.read_csv(csv_path, low_memory=False)
-                dfs.append(df)
-            except Exception as e:
-                logger.warning(f"Failed to read {csv_path}: {e}")
+        for child in sorted(entry_dir.iterdir()):
+            if not child.is_dir():
+                continue
+            if layout == "wc":
+                # Flat: {entry}/{year}/match_logs_normalized.csv
+                csv_path = child / "match_logs_normalized.csv"
+                if csv_path.exists():
+                    _read_csv(csv_path)
+            else:
+                # Nested EPL: {entry}/{child}/{team}/match_logs_normalized.csv
+                for team_dir in sorted(child.iterdir()):
+                    if not team_dir.is_dir():
+                        continue
+                    csv_path = team_dir / "match_logs_normalized.csv"
+                    if csv_path.exists():
+                        _read_csv(csv_path)
 
     if not dfs:
-        raise RuntimeError(f"No match data found in {data_dir} for seasons {seasons}")
+        raise RuntimeError(f"No match data found in {data_dir} for {seasons}")
 
     df = pd.concat(dfs, ignore_index=True)
-    logger.info(f"Loaded {len(df)} raw rows from {len(dfs)} team-season CSVs")
+    logger.info(f"Loaded {len(df)} raw rows from {len(dfs)} CSV file(s)")
 
     df = _clean_and_validate(df)
 
-    if enrich_xg:
+    # FBRef xG enrichment is EPL-specific (hardcoded club folder maps). On WC
+    # data it only yields an empty lookup and misleading warnings, so skip it.
+    if not enrich_xg:
+        pass
+    elif "epl" in layouts:
         xg_lookup = _load_fbref_xg(data_dir, seasons)
         if xg_lookup:
             df = _fill_xg_from_lookup(df, xg_lookup)
         else:
             logger.warning("[xG] FBRef lookup is empty — xG will remain NULL for all rows")
+    else:
+        logger.info(
+            "xG enrichment skipped — WC layout detected, "
+            "xG sourced from normalized CSV directly"
+        )
 
     _log_xg_coverage(df)
     return df
