@@ -1,0 +1,5 @@
+match_date,home_team,away_team,is_neutral_venue,competition_id,competition_stage
+2026-06-12,ARG,MEX,true,fifa_world_cup,group
+2026-06-13,FRA,ENG,true,fifa_world_cup,group
+2026-06-14,ESP,GER,true,fifa_world_cup,group
+2026-06-15,BRA,POR,true,fifa_world_cup,group

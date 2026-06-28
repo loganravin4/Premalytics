@@ -43,6 +43,9 @@ data-pipeline/data/raw/
 # Static downloads (football-data.co.uk E0, xg CSVs, etc.) — except team map below
 data-pipeline/data/static/*
 !data-pipeline/data/static/team_map_intl.csv
+# Example fixtures template (committed; predict.py CLI input)
+!data-pipeline/data/static/examples/
+!data-pipeline/data/static/examples/*.csv
 
 ## Legacy / removed files
 data-pipeline/test_scraper.py
