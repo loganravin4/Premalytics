@@ -152,7 +152,11 @@ Same physical match: Brazil 2–0 Serbia, 2022-11-24, group stage.
 Examples: `BRA`, `ENG`, `USA`, `GER`, `CIV`
 
 - Aliases and display names: `data-pipeline/data/static/team_map_intl.csv`
-- Columns: `alias`, `team_id`, `team_name`
+- Columns:
+  - `alias` — provider/display name as it appears upstream (e.g. `Korea Republic`, `Bosnia & Herz.`)
+  - `team_id` — canonical FIFA 3-letter code (e.g. `KOR`, `BIH`)
+  - `full_name` — human-readable national team name (e.g. `South Korea`)
+  - `confederation` — FIFA confederation (`UEFA`, `CONMEBOL`, `CONCACAF`, `CAF`, `AFC`, `OFC`)
 - Importers must normalize provider names to codes before writing CSVs
 
 ---

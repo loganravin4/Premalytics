@@ -1,5 +1,24 @@
+# WC 2026 group-stage fixtures (3 full groups, 18 matches). All neutral-site.
+# NOTE: group assignments and match dates are APPROXIMATE / illustrative — they
+# could not be verified against the official Dec 2025 draw offline. Replace with
+# the verified draw + official schedule before any production use. Team codes are
+# real FIFA codes from team_map_intl.csv so predict.py runs end-to-end.
 match_date,home_team,away_team,is_neutral_venue,competition_id,competition_stage
-2026-06-12,ARG,MEX,true,fifa_world_cup,group
-2026-06-13,FRA,ENG,true,fifa_world_cup,group
-2026-06-14,ESP,GER,true,fifa_world_cup,group
-2026-06-15,BRA,POR,true,fifa_world_cup,group
+2026-06-11,MEX,SEN,true,fifa_world_cup,group
+2026-06-11,KOR,NOR,true,fifa_world_cup,group
+2026-06-17,MEX,KOR,true,fifa_world_cup,group
+2026-06-17,SEN,NOR,true,fifa_world_cup,group
+2026-06-24,MEX,NOR,true,fifa_world_cup,group
+2026-06-24,SEN,KOR,true,fifa_world_cup,group
+2026-06-12,ARG,AUS,true,fifa_world_cup,group
+2026-06-12,POL,TUN,true,fifa_world_cup,group
+2026-06-18,ARG,POL,true,fifa_world_cup,group
+2026-06-18,AUS,TUN,true,fifa_world_cup,group
+2026-06-25,ARG,TUN,true,fifa_world_cup,group
+2026-06-25,AUS,POL,true,fifa_world_cup,group
+2026-06-13,FRA,MAR,true,fifa_world_cup,group
+2026-06-13,JPN,CRC,true,fifa_world_cup,group
+2026-06-19,FRA,JPN,true,fifa_world_cup,group
+2026-06-19,MAR,CRC,true,fifa_world_cup,group
+2026-06-26,FRA,CRC,true,fifa_world_cup,group
+2026-06-26,MAR,JPN,true,fifa_world_cup,group

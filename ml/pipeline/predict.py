@@ -114,7 +114,7 @@ def main() -> None:
         logger.error(f"Fixtures file not found: {fix_path}")
         sys.exit(1)
 
-    fixtures = pd.read_csv(fix_path)
+    fixtures = pd.read_csv(fix_path, comment="#")
     if not REQUIRED_FIXTURE_COLS.issubset(fixtures.columns):
         logger.error(f"Fixtures CSV must contain at least: {REQUIRED_FIXTURE_COLS}")
         sys.exit(1)
