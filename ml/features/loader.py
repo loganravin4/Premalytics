@@ -49,6 +49,10 @@ NUMERIC_COLS = [
 VALID_RESULTS  = {"W", "D", "L"}
 VALID_VENUES   = {"Home", "Away"}
 
+# martj42/international_results supplement (see data-pipeline/scripts/04_normalize_martj42.py).
+# Unlike FBref data this lives at a flat path, not under {competition_id}/{season_id}/.
+MARTJ42_FILE = DATA_DIR / "martj42" / "match_logs_normalized.csv"
+
 
 # ---------------------------------------------------------------------------
 # FBRef xG supplement
@@ -231,10 +235,45 @@ def _detect_layout(entry_dir: Path) -> str:
 # Primary loader
 # ---------------------------------------------------------------------------
 
+def load_martj42_matches(path: Path = MARTJ42_FILE) -> pd.DataFrame:
+    """
+    Load the martj42/international_results normalized supplement.
+
+    This file is produced by data-pipeline/scripts/04_normalize_martj42.py and
+    already conforms to DATA_CONTRACT.md (dual-row, FIFA codes, Home/Away venue,
+    neutrality in is_neutral_venue). Unlike the FBref competition data it sits at
+    a single flat path rather than under {competition_id}/{season_id}/.
+
+    Returns a contract-conforming DataFrame (match_date parsed to datetime).
+    Raises FileNotFoundError if the file is absent, or ValueError if it violates
+    the data contract.
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"martj42 supplement not found: {path}. "
+            f"Run data-pipeline/scripts/03_download_martj42.py then 04_normalize_martj42.py."
+        )
+
+    df = pd.read_csv(path, low_memory=False)
+    df["match_date"] = pd.to_datetime(df["match_date"], errors="coerce")
+
+    # Fail loud if the supplement does not satisfy the contract.
+    validate_data_contract(df)
+
+    logger.info("martj42 supplement: %d rows (%d matches) from %s",
+                len(df), df["match_id"].nunique(), path.name)
+    breakdown = (df.drop_duplicates("match_id")["competition_id"]
+                 .value_counts().sort_values(ascending=False))
+    for comp_id, n in breakdown.items():
+        logger.info("  martj42 %-22s %5d matches", comp_id, n)
+    return df
+
+
 def load_raw_matches(
     seasons: Optional[list[str]] = None,
     data_dir: Path = DATA_DIR,
     enrich_xg: bool = True,
+    include_martj42: bool = True,
 ) -> pd.DataFrame:
     """
     Load all normalized match CSVs and return a combined DataFrame.
@@ -252,6 +291,10 @@ def load_raw_matches(
                    "fifa_world_cup") or EPL season ids (default: COMPETITIONS_TRAIN).
         data_dir:  Root of the raw data directory.
         enrich_xg: If True, fill NULL xg_for/xg_against from FBRef CSVs (EPL only).
+        include_martj42: If True (default), append the martj42/international_results
+                   supplement (data/raw/martj42/match_logs_normalized.csv) to the
+                   FBref competition data, expanding the corpus to 10,000+ matches.
+                   Silently skipped (with a warning) if the file is absent.
 
     Returns:
         DataFrame with standardized dtypes and validated rows.
@@ -317,6 +360,29 @@ def load_raw_matches(
             "xG enrichment skipped — WC layout detected, "
             "xG sourced from normalized CSV directly"
         )
+
+    # Append the martj42 supplement after FBref-specific xG enrichment (martj42
+    # rows carry no xG and must not pass through the FBref club-name lookup).
+    if include_martj42:
+        if MARTJ42_FILE.exists():
+            martj = load_martj42_matches(MARTJ42_FILE)
+            before = len(df)
+            df = pd.concat([df, martj], ignore_index=True)
+            # Collapse any exact (match_id, team_id) collisions between sources
+            # (e.g. a WC/Euro fixture present in both FBref and martj42 under the
+            # same home/away designation). FBref rows sort first, so their richer
+            # xG/shot detail is the one kept.
+            df = df.drop_duplicates(subset=["match_id", "team_id"], keep="first")
+            df = df.sort_values(["match_date", "match_id", "team_id"]).reset_index(drop=True)
+            logger.info(
+                "Appended martj42 supplement: %d -> %d rows (+%d after cross-source dedup)",
+                before, len(df), len(df) - before,
+            )
+        else:
+            logger.warning(
+                "include_martj42=True but %s is absent — corpus NOT expanded. "
+                "Run 03_download_martj42.py + 04_normalize_martj42.py.", MARTJ42_FILE
+            )
 
     _log_xg_coverage(df)
     return df

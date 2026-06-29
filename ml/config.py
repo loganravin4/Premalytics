@@ -7,11 +7,17 @@ behaves identically when run in isolation or as part of a pipeline.
 Split strategy
 --------------
 Splits are competition- and date-based, never EPL season strings. The corpus
-on disk spans FIFA World Cup 2014/2018/2022 and UEFA Euro 2016/2020/2024
-(copa_america is wired in COMPETITIONS_TRAIN but not yet ingested). The split
-is purely chronological at TRAIN_CUTOFF_DATE (no shuffling): match_date <
-cutoff trains (WC 2014, WC 2018, Euro 2016, Euro 2020); match_date >= cutoff
-is eval (WC 2022, Euro 2024), with EVAL_CUTOFF_DATE marking the WC 2022 final.
+now spans the FBref WC/Euro CSVs plus the martj42 international_results
+supplement (10k+ post-1990 matches across friendlies, qualifiers, and every
+major tournament). The split is purely chronological at TRAIN_CUTOFF_DATE
+(no shuffling):
+
+  Training: all international matches before June 11, 2026.
+  Eval:     WC 2026 group stage (June 11-27, 2026) — the real, completed
+            48-team group phase (72 matches / 144 dual rows), used as a clean
+            single-tournament holdout. EVAL_CUTOFF_DATE (July 2, 2026) closes
+            the window before the Round of 32 (whose fixtures have NA scores
+            and are dropped during normalization).
 """
 
 from pathlib import Path
@@ -41,13 +47,31 @@ RANDOM_SEED = 42
 COMPETITIONS_TRAIN = ["fifa_world_cup", "uefa_euro", "copa_america"]
 
 # Chronological boundary between the training and eval windows.
-# WC 2018 (Jun-Jul 2018) falls before the cutoff -> training.
-# WC 2022 (Nov-Dec 2022) falls on/after the cutoff -> eval.
-TRAIN_CUTOFF_DATE = "2022-11-01"   # everything before Nov 2022 is training (WC 2018)
-EVAL_CUTOFF_DATE  = "2022-12-18"   # WC 2022 final — end of eval window
+# Everything before June 11, 2026 trains; the WC 2026 group stage is the holdout.
+TRAIN_CUTOFF_DATE = "2026-06-11"   # WC 2026 group stage start
+EVAL_CUTOFF_DATE  = "2026-07-02"   # WC 2026 group stage end (last match Jun 27 + buffer)
 
 # Down-weight friendlies when they enter the corpus (sample_weight multiplier).
 FRIENDLY_WEIGHT = 0.3
+
+# Intended per-competition training weights. NOTE: the sample_weight COLUMN in
+# the normalized CSVs is already baked in by the ingest scripts (these are the
+# values train.py actually feeds to fit() via home_sample_weight). This dict
+# documents the intended scheme and is the reference for any future re-normalize
+# or for overriding weights at fit time. Euro/Copa are boosted above 1.0 to
+# strengthen their signal relative to the WC; minor comps are down-weighted.
+TOURNAMENT_WEIGHTS = {
+    "fifa_world_cup": 1.0,
+    "uefa_euro": 1.5,       # up from 1.0 — boost Euro signal
+    "copa_america": 1.5,    # up from 1.0
+    "afcon": 1.2,
+    "afc_asian_cup": 1.2,
+    "concacaf_gold_cup": 1.0,
+    "uefa_nations_league": 0.7,
+    "qualifier": 0.5,
+    "friendly": 0.3,
+    "other_tournament": 0.6,
+}
 
 # ---------------------------------------------------------------------------
 # Feature engineering
