@@ -17,9 +17,31 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from ml.config import ROLLING_WINDOWS, MIN_MATCHES_REQUIRED, ELO_INITIAL, ELO_K_FACTOR
+from ml.config import (
+    ROLLING_WINDOWS, MIN_MATCHES_REQUIRED, ELO_INITIAL, ELO_K_FACTOR, STATIC_DIR,
+)
 
 logger = logging.getLogger(__name__)
+
+# Static mapping of FIFA team_id -> confederation, loaded once from
+# team_map_intl.csv. Any team_id absent from the map defaults to "OTHER".
+TEAM_MAP_CSV = STATIC_DIR / "team_map_intl.csv"
+
+
+def _load_confederation_map() -> dict[str, str]:
+    """team_id -> confederation (UEFA/CONMEBOL/CONCACAF/CAF/AFC/OFC)."""
+    if not TEAM_MAP_CSV.exists():
+        logger.warning("team_map_intl.csv not found at %s — confederation "
+                       "defaults to OTHER for all teams", TEAM_MAP_CSV)
+        return {}
+    tm = pd.read_csv(TEAM_MAP_CSV)
+    mapping: dict[str, str] = {}
+    for _, row in tm.iterrows():
+        code = str(row.get("team_id", "")).strip().upper()
+        conf = str(row.get("confederation", "")).strip().upper()
+        if code and conf and conf != "NAN":
+            mapping.setdefault(code, conf)
+    return mapping
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +145,9 @@ def _compute_h2h(df: pd.DataFrame) -> pd.DataFrame:
 
     h2h_win_3 = []
     h2h_win_5 = []
+    h2h_draws_5 = []
+    h2h_away_wins_5 = []
+    h2h_total_goals_avg_5 = []
 
     for i, row in df.iterrows():
         team     = row["team_id"]
@@ -136,13 +161,29 @@ def _compute_h2h(df: pd.DataFrame) -> pd.DataFrame:
             (df["match_date"] < date)
         ].sort_values("match_date")
 
+        has_history = len(past) >= 1
         wins = (past["result"] == "W").astype(float)
+        # Last-5 slice reused for the draw / away-win / total-goals stats.
+        last5 = past.tail(5)
 
-        h2h_win_3.append(wins.tail(3).mean() if len(past) >= 1 else np.nan)
-        h2h_win_5.append(wins.tail(5).mean() if len(past) >= 1 else np.nan)
+        h2h_win_3.append(wins.tail(3).mean() if has_history else np.nan)
+        h2h_win_5.append(wins.tail(5).mean() if has_history else np.nan)
+
+        # Draw rate and away (opponent) win rate over the last 5 meetings, all
+        # from this row's (home) perspective: result L means the opponent won.
+        h2h_draws_5.append(
+            (last5["result"] == "D").astype(float).mean() if has_history else np.nan)
+        h2h_away_wins_5.append(
+            (last5["result"] == "L").astype(float).mean() if has_history else np.nan)
+        # Average combined goals (both teams) — a scoreline-tempo signal.
+        h2h_total_goals_avg_5.append(
+            (last5["goals_for"] + last5["goals_against"]).mean() if has_history else np.nan)
 
     df["h2h_win_3"] = h2h_win_3
     df["h2h_win_5"] = h2h_win_5
+    df["h2h_draws_5"] = h2h_draws_5
+    df["h2h_away_wins_5"] = h2h_away_wins_5
+    df["h2h_total_goals_avg_5"] = h2h_total_goals_avg_5
     return df
 
 
@@ -253,6 +294,15 @@ def build_team_features(df: pd.DataFrame) -> pd.DataFrame:
         parts.append(enriched)
 
     result = pd.concat(parts, ignore_index=False).sort_index()
+
+    # Confederation: static per-team metadata (no leakage). Prefixed to
+    # home_confederation / away_confederation by pivot_to_match_rows(), then
+    # one-hot encoded in train.select_feature_columns().
+    conf_map = _load_confederation_map()
+    result["confederation"] = (
+        result["team_id"].map(conf_map).fillna("OTHER").astype(str)
+    )
+
     logger.info(f"Team features computed. Shape: {result.shape}")
     return result
 

@@ -102,23 +102,14 @@ def _fixture_feature_row(features: pd.DataFrame, feature_cols: list[str],
     return row
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Predict WC fixtures")
-    parser.add_argument("--fixtures", required=True, help="CSV of fixtures to predict")
-    parser.add_argument("--run-id", default=None, help="Run ID (default: latest)")
-    args = parser.parse_args()
+def predict_match_outcomes(fixtures: pd.DataFrame, run_id: str | None = None) -> list[dict]:
+    """
+    Return match-outcome probabilities for each fixture row.
 
-    run_dir = _resolve_run_dir(args.run_id)
-
-    fix_path = Path(args.fixtures)
-    if not fix_path.exists():
-        logger.error(f"Fixtures file not found: {fix_path}")
-        sys.exit(1)
-
-    fixtures = pd.read_csv(fix_path, comment="#")
-    if not REQUIRED_FIXTURE_COLS.issubset(fixtures.columns):
-        logger.error(f"Fixtures CSV must contain at least: {REQUIRED_FIXTURE_COLS}")
-        sys.exit(1)
+    Output: one dict per fixture with home_team, away_team, p_home_win,
+    p_draw, p_away_win. Reusable by other pipelines (e.g. predict_knockout).
+    """
+    run_dir = _resolve_run_dir(run_id)
 
     model = joblib.load(run_dir / "gradient_boosting.joblib")
     feature_cols = json.loads((run_dir / "feature_cols.json").read_text())
@@ -158,7 +149,30 @@ def main() -> None:
             "p_draw":     p_draw,
             "p_away_win": p_away,
         })
+    return predictions
 
+
+def load_fixtures(path_str: str) -> pd.DataFrame:
+    """Read a fixtures CSV and validate the required columns."""
+    fix_path = Path(path_str)
+    if not fix_path.exists():
+        logger.error(f"Fixtures file not found: {fix_path}")
+        sys.exit(1)
+    fixtures = pd.read_csv(fix_path, comment="#")
+    if not REQUIRED_FIXTURE_COLS.issubset(fixtures.columns):
+        logger.error(f"Fixtures CSV must contain at least: {REQUIRED_FIXTURE_COLS}")
+        sys.exit(1)
+    return fixtures
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Predict WC fixtures")
+    parser.add_argument("--fixtures", required=True, help="CSV of fixtures to predict")
+    parser.add_argument("--run-id", default=None, help="Run ID (default: latest)")
+    args = parser.parse_args()
+
+    fixtures = load_fixtures(args.fixtures)
+    predictions = predict_match_outcomes(fixtures, run_id=args.run_id)
     print(json.dumps(predictions, indent=2))
 
 

@@ -22,7 +22,7 @@ from sklearn.metrics import accuracy_score, log_loss
 
 from ml.config import ARTIFACTS_DIR, TARGET_ENCODE, LOG_FORMAT
 from ml.pipeline.train import (
-    load_wc_features, split_train_eval, build_xy,
+    load_wc_features, split_train_eval, build_xy, select_feature_columns,
 )
 
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
@@ -111,6 +111,9 @@ def main() -> None:
 
     # Same split logic as train.py.
     features = load_wc_features()
+    # Reproduce training's confederation one-hot columns in place so the saved
+    # feature_cols.json (which lists the dummy columns) indexes cleanly.
+    select_feature_columns(features)
     feature_cols = json.loads((run_dir / "feature_cols.json").read_text())
     train_df, eval_df = split_train_eval(features)
     X_eval, y_eval, _ = build_xy(eval_df, feature_cols)

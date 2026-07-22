@@ -50,17 +50,51 @@ NON_FEATURE_COLS = [
     "match_outcome", "match_date",
     # Sample weights are row weights, not predictive features.
     "home_sample_weight", "away_sample_weight",
+    # Raw categorical confederation columns — replaced by one-hot dummies below.
+    "home_confederation", "away_confederation",
 ]
+
+# Fixed confederation vocabulary (DATA_CONTRACT.md team_map values + OTHER
+# fallback). A FIXED category set guarantees select_feature_columns() emits the
+# identical dummy columns for train, eval, and any future data — no column
+# drift between splits.
+CONFEDERATIONS = ["UEFA", "CONMEBOL", "CONCACAF", "CAF", "AFC", "OFC", "OTHER"]
+CONFEDERATION_COLS = ["home_confederation", "away_confederation"]
+
+
+def _one_hot_confederation(features: pd.DataFrame) -> list[str]:
+    """
+    One-hot encode home_/away_confederation IN PLACE using the fixed
+    CONFEDERATIONS vocabulary, returning the dummy column names added.
+
+    Mutating `features` (rather than returning a new frame) means the columns
+    are present on every downstream slice — train_df, eval_df, and the
+    features.joblib persisted for predict.py.
+    """
+    added: list[str] = []
+    for col in CONFEDERATION_COLS:
+        if col not in features.columns:
+            continue
+        cat = pd.Categorical(
+            features[col].fillna("OTHER").astype(str), categories=CONFEDERATIONS
+        )
+        dummies = pd.get_dummies(cat, prefix=col).astype(float)
+        for dcol in dummies.columns:
+            features[dcol] = dummies[dcol].values
+            added.append(dcol)
+    return added
 
 
 def select_feature_columns(features: pd.DataFrame) -> list[str]:
     """
     Numeric model-feature columns only.
 
-    Starts from the home_/away_/diff_ prefixed candidates, drops the known
-    metadata columns by name, then keeps only numeric dtypes so no object
-    column can ever reach sklearn.
+    One-hot encodes the categorical confederation columns in place, then starts
+    from the home_/away_/diff_ prefixed candidates, drops the known metadata
+    columns by name, and keeps only numeric dtypes so no object column can ever
+    reach sklearn.
     """
+    _one_hot_confederation(features)
     candidates = [c for c in get_feature_columns(features) if c not in NON_FEATURE_COLS]
     return [c for c in candidates if pd.api.types.is_numeric_dtype(features[c])]
 

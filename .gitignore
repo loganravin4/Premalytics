@@ -18,6 +18,7 @@ build/
 dist/
 *.pyc
 __pycache__/
+data-pipeline/data/evaluation/
 
 ## OS files
 .DS_Store
