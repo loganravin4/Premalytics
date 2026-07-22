@@ -28,6 +28,7 @@ columns are metadata only and are NOT used as model inputs.
 import argparse
 import json
 import logging
+import math
 import sys
 from pathlib import Path
 
@@ -134,14 +135,28 @@ def main() -> None:
     classes = list(model.classes_)  # encoded ints, sorted: [0, 1, 2]
 
     predictions = []
-    for f, p in zip(fixtures.itertuples(), proba):
-        pmap = dict(zip(classes, p))
+    for i, (f, p) in enumerate(zip(fixtures.itertuples(), proba)):
+        # Null-safe guard: a degenerate / all-zero feature row can yield NaN
+        # from the calibrated model. Coerce any None/NaN probability to 0.0.
+        probs = [0.0 if (v is None or math.isnan(float(v))) else float(v) for v in p]
+        pmap = dict(zip(classes, probs))
+
+        p_home = round(float(pmap.get(TARGET_ENCODE["H"], 0.0)), 4)
+        p_draw = round(float(pmap.get(TARGET_ENCODE["D"], 0.0)), 4)
+        p_away = round(float(pmap.get(TARGET_ENCODE["A"], 0.0)), 4)
+
+        # If both teams are unknown (all-zero feature vector) the model has no
+        # signal — emit a uniform distribution instead of NaN/degenerate output.
+        all_zero = all(v == 0.0 for v in rows[i].values())
+        if all_zero or (p_home + p_draw + p_away) == 0.0:
+            p_home = p_draw = p_away = 0.333
+
         predictions.append({
             "home_team":  f.home_team,
             "away_team":  f.away_team,
-            "p_home_win": round(float(pmap.get(TARGET_ENCODE["H"], 0.0)), 4),
-            "p_draw":     round(float(pmap.get(TARGET_ENCODE["D"], 0.0)), 4),
-            "p_away_win": round(float(pmap.get(TARGET_ENCODE["A"], 0.0)), 4),
+            "p_home_win": p_home,
+            "p_draw":     p_draw,
+            "p_away_win": p_away,
         })
 
     print(json.dumps(predictions, indent=2))
