@@ -123,3 +123,29 @@ TARGET_ENCODE  = {"H": 2, "D": 1, "A": 0}
 # Logging
 # ---------------------------------------------------------------------------
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+# ---------------------------------------------------------------------------
+# Shot xG (Track 2) — tournament-date splits, never shuffled
+# ---------------------------------------------------------------------------
+# A shot's split is decided by its tournament's first match date, so no
+# tournament is ever split across train and eval.
+#   train:      tournaments starting before SHOT_EVAL_START_DATE
+#   validation: the train tournaments starting on/after SHOT_VALIDATION_START_DATE
+#               (AFCON 2023, Women's World Cup 2023); used only to pick the
+#               production model, then folded back into train
+#   eval:       tournaments starting on/after SHOT_EVAL_START_DATE
+#               (Euro 2024, Copa América 2024, Women's Euro 2025)
+SHOT_VALIDATION_START_DATE = "2023-07-01"
+SHOT_EVAL_START_DATE = "2024-06-01"
+# Headline metrics are reported on this gender's eval shots (the site covers
+# men's internationals); women's tournaments add training volume via is_womens.
+SHOT_HEADLINE_GENDER = "male"
+# Committed location for frontend-facing JSON (ml/artifacts/ is gitignored).
+EXPORTS_DIR = PROJECT_ROOT / "ml" / "exports"
+
+# ---------------------------------------------------------------------------
+# Penalties (Track 3)
+# ---------------------------------------------------------------------------
+PENALTY_CSV = STATIC_DIR / "penalties" / "penalty_kicks_v0.csv"
+# Kicks from tournaments starting on/after this date are the penalty eval set.
+PENALTY_EVAL_START_DATE = "2024-06-01"
