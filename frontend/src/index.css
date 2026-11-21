@@ -1,75 +1,160 @@
 @import "tailwindcss";
 
-/* Design tokens — consumed by Tailwind utilities via @theme */
-@theme {
-  --color-background: #0a0e1a;
-  --color-surface: #111827;
-  --color-surface-elevated: #1a2235;
-  --color-border: #1e2d40;
-  --color-primary: #37003c;
-  --color-accent-green: #00ff87;
-  --color-accent-red: #ff4757;
-  --color-accent-yellow: #ffd700;
-  --color-text: #f1f5f9;
-  --color-text-muted: #64748b;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+/* Two-color press: ink plus one ultramarine spot. Draw and away are tints of the spot. */
+:root {
+  --paper: #f5f6f2;
+  --paper-2: #eceee8;
+  --ink: #14171c;
+  --ink-2: #3a404a;
+  --muted: #5d646f;
+  --rule: #d4d8dd;
+  --rule-strong: #14171c;
+  --spot: #1e3fae;
+  --spot-ink: #ffffff;
+  --tint-away: #8a9edc;
+  --tint-draw: #cad3ef;
+  --focus: #1e3fae;
+  color-scheme: light;
 }
 
-/* Ambient mesh + soft orbs behind glass UI */
-.premalytics-bg-mesh {
-  background:
-    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(55, 0, 60, 0.45), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(0, 255, 135, 0.08), transparent 50%),
-    radial-gradient(ellipse 50% 35% at 50% 100%, rgba(30, 45, 64, 0.5), transparent 45%),
-    var(--color-background);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .premalytics-bg-mesh {
-    animation: none;
-  }
-}
-
-/* App shell: full viewport, Inter, dark scheme */
-html {
+/* The same press run on ink-dark stock. */
+:root[data-theme="dark"] {
+  --paper: #0f1217;
+  --paper-2: #161a21;
+  --ink: #e8ebf0;
+  --ink-2: #c3c8d1;
+  --muted: #98a0ad;
+  --rule: #2a303a;
+  --rule-strong: #e8ebf0;
+  --spot: #8aa2ff;
+  --spot-ink: #0f1217;
+  --tint-away: #4a5ea6;
+  --tint-draw: #2c3656;
+  --focus: #8aa2ff;
   color-scheme: dark;
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1217;
+    --paper-2: #161a21;
+    --ink: #e8ebf0;
+    --ink-2: #c3c8d1;
+    --muted: #98a0ad;
+    --rule: #2a303a;
+    --rule-strong: #e8ebf0;
+    --spot: #8aa2ff;
+    --spot-ink: #0f1217;
+    --tint-away: #4a5ea6;
+    --tint-draw: #2c3656;
+    --focus: #8aa2ff;
+    color-scheme: dark;
+  }
+}
 
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-spot: var(--spot);
+  --color-spot-ink: var(--spot-ink);
+  --color-tint-away: var(--tint-away);
+  --color-tint-draw: var(--tint-draw);
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4", ui-serif, Georgia, serif;
+}
+
+html {
+  background: var(--paper);
+  -webkit-text-size-adjust: 100%;
+}
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
   font-family: var(--font-sans);
-  font-weight: 400;
-  line-height: 1.65;
-  color: var(--color-text);
-  background-color: var(--color-background);
+  font-size: 16px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+::selection {
+  background: var(--spot);
+  color: var(--spot-ink);
+}
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+a {
+  color: inherit;
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+* {
+  scrollbar-color: var(--rule) transparent;
 }
 
-#root {
-  min-height: 100vh;
+/* Condensed display numerals and running heads. */
+.display {
+  font-stretch: 62%;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  line-height: 0.85;
+}
+.condensed {
+  font-stretch: 75%;
+}
+.running-head {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.prose-col {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  line-height: 1.65;
+  max-width: 68ch;
+}
+.prose-col a {
+  color: var(--spot);
+  text-decoration-line: underline;
+}
+.prose-col p + p {
+  margin-top: 1em;
+}
+.balance {
+  text-wrap: balance;
 }
 
-/* Headings: bold, tight tracking */
-h1,
-h2,
-h3 {
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  line-height: 1.2;
+/* A miss is struck through; the stroke weight carries how sure the model was. */
+.struck {
+  text-decoration-line: line-through;
+  text-decoration-color: var(--ink);
+  text-decoration-thickness: var(--strike, 2px);
 }
 
-/* Progress bar fill animation */
-@keyframes premalytics-progress {
+/* The volume prints in date order once, on first view. */
+@keyframes ink-in {
   from {
-    transform: scaleX(0);
+    clip-path: inset(0 0 100% 0);
   }
   to {
-    transform: scaleX(1);
+    clip-path: inset(0 0 0 0);
   }
 }
-
-.premalytics-progress-fill {
-  transform-origin: left center;
-  animation: premalytics-progress 0.6s ease-out forwards;
+.ink-in {
+  animation: ink-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 7ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ink-in {
+    animation: none;
+  }
 }
