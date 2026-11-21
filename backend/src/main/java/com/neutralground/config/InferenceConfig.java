@@ -7,7 +7,6 @@ import org.springframework.web.client.RestClient;
 
 import java.net.http.HttpClient;
 
-/** RestClient for the ml-serve FastAPI app, with connect and read timeouts from configuration. */
 @Configuration
 public class InferenceConfig {
 
@@ -19,10 +18,7 @@ public class InferenceConfig {
                 .build();
     }
 
-    /**
-     * HTTP/1.1 on purpose: the JDK client otherwise attempts an h2c upgrade on plain http, which
-     * uvicorn does not support, and the request body is lost (ml-serve answers 422 "body missing").
-     */
+    /** HTTP/1.1 because the JDK client's h2c upgrade is unsupported by uvicorn and drops the request body. */
     static JdkClientHttpRequestFactory requestFactory(NeutralGroundProperties.Inference inference) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)

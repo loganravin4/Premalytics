@@ -1,46 +1,16 @@
-"""
-=============================================================================
-File: ml/utils/database.py
-Description: Database connection and query utilities for ML pipeline
-=============================================================================
-
-Provides reusable database functions for feature engineering.
-"""
-
 import pandas as pd
 import psycopg2
 from pathlib import Path
 import sys
 
-# Add parent directory to path to import config
+# config lives in database/scripts, which isn't an importable package.
 sys.path.append(str(Path(__file__).parent.parent.parent / 'database' / 'scripts'))
 from config import get_db_config, get_db_schema
 
 def get_connection():
-    """
-    Get database connection for ML scripts.
-    
-    Returns:
-        psycopg2.connection: Active database connection
-    """
     return psycopg2.connect(**get_db_config())
 
 def query_to_dataframe(query: str, conn=None) -> pd.DataFrame:
-    """
-    Execute SQL query and return results as pandas DataFrame.
-    
-    Args:
-        query: SQL query string
-        conn: Database connection (creates new one if None)
-        
-    Returns:
-        pd.DataFrame: Query results
-        
-    Example:
-        >>> df = query_to_dataframe("SELECT * FROM pl_data.teams")
-        >>> print(df.head())
-    """
-    # Create connection if not provided
     close_conn = False
     if conn is None:
         conn = get_connection()
@@ -54,16 +24,6 @@ def query_to_dataframe(query: str, conn=None) -> pd.DataFrame:
             conn.close()
 
 def get_all_matches(season_id: str = None, conn=None) -> pd.DataFrame:
-    """
-    Get all matches, optionally filtered by season.
-    
-    Args:
-        season_id: Optional season filter (e.g., '2023-2024')
-        conn: Database connection
-        
-    Returns:
-        pd.DataFrame: Matches with team names
-    """
     query = """
         SELECT 
             m.match_id,
@@ -96,16 +56,6 @@ def get_all_matches(season_id: str = None, conn=None) -> pd.DataFrame:
     return query_to_dataframe(query, conn)
 
 def get_team_season_stats(season_id: str, conn=None) -> pd.DataFrame:
-    """
-    Get aggregated team statistics for a season.
-    
-    Args:
-        season_id: Season identifier (e.g., '2023-2024')
-        conn: Database connection
-        
-    Returns:
-        pd.DataFrame: Team statistics
-    """
     query = f"""
         SELECT 
             t.team_id,

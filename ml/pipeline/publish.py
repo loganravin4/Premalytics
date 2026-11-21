@@ -1,38 +1,6 @@
-"""
-BE-03: publish a model run's tournament predictions into the Neutral Ground Postgres schema (ng).
+"""Publish a model run's tournament predictions into the Neutral Ground Postgres schema (ng), idempotently.
 
-The API (backend/) owns the schema through Flyway, so start it once against the database before
-publishing. This script only writes rows; it never creates or alters tables.
-
-What one run writes, in a single transaction:
-    ng.teams            every team in data-pipeline/data/static/team_map_intl.csv
-    ng.tournaments      the tournament's metadata (see TOURNAMENTS below)
-    ng.matches          fixtures, plus results where the match has been played
-    ng.model_runs       the match run (training metrics.json + tournament evaluation metrics.json),
-                        and the score run if scorelines were computed
-    ng.predictions      one row per fixture: probabilities and, if available, a predicted scoreline
-    ng.team_elo         pre-match Elo per team and date, from the run's features.joblib
-    ng.shots_xg_grid    optional, from an XG-04 xg_grid.json (--xg-grid)
-    ng.penalty_aggregates optional, from a PEN-03 penalty_aggregates.json (--penalty-aggregates)
-
-Publishing is idempotent: rows are upserted on their natural keys, so re-running replaces a run's
-predictions instead of duplicating them. A re-published run becomes the newest (published_at = now).
-
-Usage (from the repo root):
-    python -m ml.pipeline.publish --tournament wc2026
-    python -m ml.pipeline.publish --tournament wc2026 --predict          # re-score fixtures live
-    python -m ml.pipeline.publish --tournament wc2026 --dry-run          # build rows, write nothing
-
-Database connection: --database-url, else DATABASE_URL, else DB_HOST / DB_PORT / DB_NAME / DB_USER /
-DB_PASSWORD (a repo-root .env is read if python-dotenv is installed).
-
-Optional input shapes:
-    xg_grid.json:            {"model_run_id": "...", "cells": [{"distance_m": 6, "angle_deg": 0,
-                              "body_part": "foot", "situation": "open_play", "p_goal": 0.42}, ...]}
-                             (a bare list of cells is also accepted; body_part/situation default "any")
-    penalty_aggregates.json: {"dataset": "penalty_kicks_v0", "aggregates": [{"dimension": "zone",
-                              "bucket": "top_left", "kicks": 40, "goals": 34}, ...]}
-                             (conversion is computed from goals / kicks when missing)
+Usage: python -m ml.pipeline.publish --tournament wc2026 [--predict] [--dry-run]
 """
 
 from __future__ import annotations
@@ -58,7 +26,7 @@ logger = logging.getLogger("ml.pipeline.publish")
 
 STAGES = {"group", "round_of_32", "round_of_16", "quarter_final", "semi_final", "third_place", "final"}
 
-# Tournament metadata and default input files. Add an entry per tournament the models cover.
+# Add an entry per tournament the models cover.
 TOURNAMENTS: dict[str, dict[str, Any]] = {
     "wc2026": {
         "name": "FIFA World Cup 2026",
@@ -126,10 +94,6 @@ class Bundle:
     notes: str | None = None
 
 
-# ---------------------------------------------------------------------------
-# Pure builders (unit-tested in ml/tests/test_publish.py)
-# ---------------------------------------------------------------------------
-
 def _truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"true", "1", "yes", "y", "t"}
 
@@ -140,7 +104,7 @@ def read_csv(path: Path) -> list[dict[str, str]]:
 
 
 def build_teams(team_map_rows: Iterable[dict[str, str]]) -> list[tuple[str, str, str]]:
-    """One (code, name, confederation) per team_id. The alias column is ignored."""
+    """One (code, name, confederation) per team_id; alias rows collapse onto it."""
     teams: dict[str, tuple[str, str, str]] = {}
     for row in team_map_rows:
         code = row["team_id"].strip()
@@ -151,11 +115,7 @@ def build_teams(team_map_rows: Iterable[dict[str, str]]) -> list[tuple[str, str,
 
 def build_matches(fixture_rows: list[dict[str, str]],
                   result_rows: list[dict[str, str]] | None = None) -> list[MatchRow]:
-    """
-    Fixtures in file order become match_number 1..n. Results join on (date, home, away).
-    goals_for / goals_against in the results file are the home / away goals after extra time;
-    a level knockout match with a winner was decided on penalties.
-    """
+    """Fixtures in file order become match_number 1..n; results join on (date, home, away)."""
     matches: list[MatchRow] = []
     seen: set[tuple[str, str, str]] = set()
     for i, f in enumerate(fixture_rows, start=1):
@@ -182,7 +142,7 @@ def build_matches(fixture_rows: list[dict[str, str]],
         if match is None:
             raise PublishError(f"Result {key} has no matching fixture")
         if str(r.get("goals_for", "")).strip() == "":
-            continue  # not played yet
+            continue
         match.home_goals = int(float(r["goals_for"]))
         match.away_goals = int(float(r["goals_against"]))
         winner = (r.get("winner") or "").strip() or None
@@ -193,6 +153,7 @@ def build_matches(fixture_rows: list[dict[str, str]],
         if winner is not None and winner not in (match.home_team, match.away_team):
             raise PublishError(f"Result {key}: winner {winner} is not one of the two teams")
         match.winner = winner
+        # Goals are after extra time, so a level score with a winner means penalties.
         match.decided_on_penalties = match.home_goals == match.away_goals and winner is not None
         if match.decided_on_penalties and match.stage == "group":
             raise PublishError(f"Result {key}: a group match cannot be decided on penalties")
@@ -201,17 +162,13 @@ def build_matches(fixture_rows: list[dict[str, str]],
 
 def build_predictions(matches: list[MatchRow], prediction_rows: list[dict[str, Any]],
                       score_rows: list[dict[str, Any]] | None = None) -> list[PredictionRow]:
-    """
-    Pair prediction rows (the predict CLI's JSON) with matches. The CLI output has no dates, so rows
-    are paired by position and checked against the teams. Score rows (predict_scores output) pair
-    the same way.
-    """
     if len(prediction_rows) != len(matches):
         raise PublishError(f"{len(prediction_rows)} predictions for {len(matches)} fixtures")
     if score_rows is not None and len(score_rows) != len(matches):
         raise PublishError(f"{len(score_rows)} score predictions for {len(matches)} fixtures")
 
     out: list[PredictionRow] = []
+    # The predict CLI output has no dates, so pair by position and check the teams.
     for i, (m, p) in enumerate(zip(matches, prediction_rows)):
         if (p["home_team"], p["away_team"]) != (m.home_team, m.away_team):
             raise PublishError(f"Prediction {i + 1} is {p['home_team']}-{p['away_team']}, "
@@ -234,11 +191,7 @@ def build_predictions(matches: list[MatchRow], prediction_rows: list[dict[str, A
 
 
 def build_elo(features: Any, since: str, team_codes: set[str]) -> list[tuple[str, str, float]]:
-    """
-    (team, date, elo) from a feature matrix with match_date, home_team, away_team, home_elo,
-    away_elo columns. The Elo is the pre-match rating. A team that played twice on one date keeps
-    the later row.
-    """
+    """Pre-match (team, date, elo) points; a team that played twice on one date keeps the later row."""
     required = {"match_date", "home_team", "away_team", "home_elo", "away_elo"}
     missing = required - set(features.columns)
     if missing:
@@ -249,7 +202,8 @@ def build_elo(features: Any, since: str, team_codes: set[str]) -> list[tuple[str
         if day < since:
             continue
         for team, elo in ((row.home_team, row.home_elo), (row.away_team, row.away_elo)):
-            if team in team_codes and elo == elo:  # elo == elo drops NaN
+            # elo == elo drops NaN.
+            if team in team_codes and elo == elo:
                 points[(team, day)] = round(float(elo), 2)
     return [(team, day, elo) for (team, day), elo in sorted(points.items())]
 
@@ -285,10 +239,6 @@ def build_penalty_aggregates(payload: Any, dataset: str | None = None) -> tuple[
         })
     return name, out
 
-
-# ---------------------------------------------------------------------------
-# Artifact lookup
-# ---------------------------------------------------------------------------
 
 def _latest(pointer: str) -> str | None:
     path = ARTIFACTS_DIR / pointer
@@ -422,10 +372,6 @@ def _train_cutoff() -> str | None:
         return None
 
 
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
-
 def database_url(explicit: str | None) -> str:
     if explicit:
         return explicit
@@ -447,6 +393,7 @@ def write_bundle(conn, b: Bundle) -> dict[str, int]:
 
     counts: dict[str, int] = {}
     with conn.cursor() as cur:
+        # The API owns the schema through Flyway; this script only writes rows, never DDL.
         cur.execute("SELECT to_regclass('ng.predictions')")
         if cur.fetchone()[0] is None:
             raise PublishError("Schema ng is missing. Start the API once so Flyway applies the migrations.")

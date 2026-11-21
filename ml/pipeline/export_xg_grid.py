@@ -1,24 +1,6 @@
-"""
-Export the precomputed xG grid for the frontend xG lab (XG-04).
+"""Export the grid_xg model's precomputed xG grids (distance/angle and pitch) for the frontend xG lab.
 
-Scores the grid_xg model (distance, angle, body part, situation; men's
-matches) over two grids:
-
-  distance_angle  distance 1-40 m (1 m steps) x angle 0-85 degrees (5 degree
-                  steps), per body part and situation. Cells that fall
-                  off the pitch are null. n_train_shots gives the training
-                  support per cell so the UI can fade unsupported cells.
-  pitch           StatsBomb pitch coordinates (yards, attacking toward x=120,
-                  goal center at (120, 40)), 2-yard cells over the attacking
-                  half, per body part and situation. Lets the lab place a
-                  draggable shot without converting to distance/angle.
-
-Schema: docs/XG_MODEL.md ("xg_grid.json schema").
-
-Writes ml/artifacts/{run}/xg_grid.json and ml/exports/xg_grid.json (tracked).
-
-Usage:
-    python -m ml.pipeline.export_xg_grid [--run-id RUN_ID]
+Usage: python -m ml.pipeline.export_xg_grid [--run-id RUN_ID]
 """
 
 import argparse
@@ -46,7 +28,8 @@ YARDS_TO_M = 0.9144
 GOAL_X, GOAL_Y = 120.0, 40.0
 DISTANCES_M = list(range(1, 41))
 ANGLES_DEG = list(range(0, 90, 5))
-PITCH_X = list(range(61, 120, 2))    # cell centers, yards
+# 2-yard cell centers over the attacking half, in StatsBomb yards.
+PITCH_X = list(range(61, 120, 2))
 PITCH_Y = list(range(1, 80, 2))
 
 
@@ -85,7 +68,7 @@ def distance_angle_grid(model, feats) -> dict:
 
 
 def training_support(train: pd.DataFrame) -> list[list[int]]:
-    """Training shots per (distance, angle) cell, all body parts and situations."""
+    """Training shots per (distance, angle) cell, so the UI can fade unsupported cells."""
     d_idx = np.clip(np.round(train["distance_m"]).astype(int) - 1, 0, len(DISTANCES_M) - 1)
     a_idx = np.clip(np.round(train["angle_deg"] / 5).astype(int), 0, len(ANGLES_DEG) - 1)
     counts = np.zeros((len(DISTANCES_M), len(ANGLES_DEG)), dtype=int)

@@ -1,41 +1,6 @@
-"""
-05_evaluate_wc2026.py — score the match-outcome predictor across WC 2026.
+"""Score the WC 2026 pre-tournament predictions against actual results and save a versioned report.
 
-Self-contained tournament post-mortem. Loads the pre-tournament predictions
-produced by `python -m ml.pipeline.predict` and the actual WC 2026 results,
-joins them, and prints a readable report:
-
-  * Overall accuracy (argmax of p_home_win / p_draw / p_away_win vs actual)
-  * Accuracy by tournament stage
-  * Multi-class log loss across all 104 matches
-  * Calibration of confident home picks (p_home_win > 0.5)
-  * Best "gutsy" correct calls and the model's most confident misses
-
-Inputs (all under data-pipeline/data/):
-    wc2026_predictions.json      — output of ml.pipeline.predict (fixture order)
-    wc2026_full_fixtures.csv     — carries match_date + stage per fixture
-    wc2026_actual_results.csv    — actual outcomes (home-team perspective)
-
-Join key (per task spec): home_team + away_team + match_date. The predictions
-JSON has no match_date column, so match_date/stage are attached from the
-fixtures CSV by row order (predict.py preserves fixture order) before the
-key-based join to the actual results.
-
-Result convention: `result` is goals-based from the home team's perspective
-(W = home win, D = draw, L = away win). Knockout matches decided on penalties
-count as draws by default — the same W/D/L definition the model was trained on.
-Pass --credit-shootout-winner to instead score those matches against the team
-that actually advanced (from martj42 shootouts.csv).
-
-Every run is versioned to:
-    data-pipeline/data/evaluation/wc2026/{YYYYMMDD_HHMMSS}/
-        report.txt              — plain-text copy of the full report
-        metrics.json            — structured metrics
-        predictions_scored.csv  — the full joined + scored table
-
-Usage:
-    python data-pipeline/scripts/05_evaluate_wc2026.py
-    python data-pipeline/scripts/05_evaluate_wc2026.py --credit-shootout-winner
+Usage: python data-pipeline/scripts/05_evaluate_wc2026.py [--no-credit-shootout-winner] [--predictions PATH]
 """
 
 from __future__ import annotations
@@ -50,9 +15,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-SCRIPT_DIR = Path(__file__).resolve().parent          # .../data-pipeline/scripts/
-PIPELINE_DIR = SCRIPT_DIR.parent                      # .../data-pipeline/
-PROJECT_ROOT = PIPELINE_DIR.parent                    # .../premalytics/
+SCRIPT_DIR = Path(__file__).resolve().parent
+PIPELINE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = PIPELINE_DIR.parent
 DATA_DIR = PIPELINE_DIR / "data"
 
 PRED_JSON = DATA_DIR / "wc2026_predictions.json"
@@ -67,7 +32,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from ml.models import metrics as M  # noqa: E402
 EVAL_OUT_ROOT = DATA_DIR / "evaluation" / "wc2026"
 
-# Stage display order + friendly labels for the report.
 STAGE_ORDER = [
     "group", "round_of_32", "round_of_16",
     "quarter_final", "semi_final", "third_place", "final",
@@ -82,13 +46,12 @@ STAGE_LABEL = {
     "final": "Final",
 }
 
-# Force UTF-8 so team names with diacritics never hit the Windows cp1252 console.
+# Team names carry diacritics the Windows cp1252 console can't encode
 try:
     sys.stdout.reconfigure(encoding="utf-8")
-except Exception:  # pragma: no cover — non-reconfigurable stream
+except Exception:  # pragma: no cover
     pass
 
-# rich is nice-to-have; degrade gracefully to plain text if unavailable.
 try:
     from rich.console import Console
     from rich.table import Table
@@ -99,8 +62,7 @@ except Exception:  # pragma: no cover
     _CONSOLE = None
     _HAVE_RICH = False
 
-# Every emitted line is mirrored here so we can persist a clean plain-text
-# report.txt regardless of whether rich is active on stdout.
+# Mirrors every line so report.txt stays plain text even when rich is active
 _BUFFER: list[str] = []
 
 _MARKUP_TAGS = ("[bold]", "[/bold]", "[green]", "[/green]", "[red]", "[/red]",
@@ -113,11 +75,7 @@ def _strip(msg: str) -> str:
     return msg
 
 
-# ---------------------------------------------------------------------------
-# Loading / joining
-# ---------------------------------------------------------------------------
 def load_team_names() -> dict[str, str]:
-    """FIFA code -> human-readable national team name (best-effort, for display)."""
     if not TEAM_MAP_CSV.exists():
         return {}
     df = pd.read_csv(TEAM_MAP_CSV)
@@ -131,7 +89,6 @@ def load_team_names() -> dict[str, str]:
 
 
 def _name_to_code() -> dict[str, str]:
-    """Provider display name (alias or full_name) -> FIFA 3-letter code."""
     m: dict[str, str] = {}
     if not TEAM_MAP_CSV.exists():
         return m
@@ -148,13 +105,7 @@ def _name_to_code() -> dict[str, str]:
 
 
 def ensure_winner_column() -> None:
-    """
-    Guarantee wc2026_actual_results.csv has a `winner` column, persisting it if
-    absent (per task spec). `winner` is the FIFA code of the team that
-    advanced: the higher scorer for decisive matches, the shootout winner
-    (from martj42 shootouts.csv) for matches level after extra time, and empty
-    for genuine draws (group stage).
-    """
+    """Add and persist a `winner` column (the team that advanced, shootouts included) if missing."""
     if not ACTUAL_CSV.exists():
         sys.exit(f"ERROR: missing required input {ACTUAL_CSV}")
     actual = pd.read_csv(ACTUAL_CSV)
@@ -181,13 +132,13 @@ def ensure_winner_column() -> None:
         elif gf < ga:
             winners.append(r.away_team)
         else:
+            # Level after extra time: the shootout winner, or empty for a group-stage draw
             winners.append(shoot.get((r.match_date, r.home_team, r.away_team), ""))
     actual["winner"] = winners
     actual.to_csv(ACTUAL_CSV, index=False)
 
 
 def load_joined(pred_json: Path = PRED_JSON) -> pd.DataFrame:
-    """Load predictions + actuals and return one row per match, key-joined."""
     for p in (pred_json, FIXTURES_CSV, ACTUAL_CSV):
         if not p.exists():
             sys.exit(f"ERROR: missing required input {p}")
@@ -200,14 +151,12 @@ def load_joined(pred_json: Path = PRED_JSON) -> pd.DataFrame:
         sys.exit(f"ERROR: predictions ({len(preds)}) and fixtures "
                  f"({len(fixtures)}) row counts differ — cannot align.")
 
-    # predict.py preserves fixture order, so attach match_date/stage by position.
+    # Predictions carry no match_date, but predict.py preserves fixture order
     preds = preds.reset_index(drop=True)
     preds["match_date"] = fixtures["match_date"].values
     preds["competition_stage"] = fixtures["competition_stage"].values
 
-    # Key-based join to actuals on home_team + away_team + match_date.
-    # stage already came from the fixtures file; drop the actuals' copy so the
-    # merge doesn't suffix it to competition_stage_x/_y.
+    # Stage already came from fixtures; drop it here so the merge doesn't add _x/_y suffixes
     actual = actual.drop(columns=["competition_stage"], errors="ignore")
     merged = preds.merge(
         actual,
@@ -221,27 +170,14 @@ def load_joined(pred_json: Path = PRED_JSON) -> pd.DataFrame:
     return merged
 
 
-# ---------------------------------------------------------------------------
-# Scoring
-# ---------------------------------------------------------------------------
 OUTCOMES = ["home", "draw", "away"]
 RESULT_TO_OUTCOME = {"W": "home", "D": "draw", "L": "away"}
 
 
 def annotate(df: pd.DataFrame, credit_shootout: bool = True) -> pd.DataFrame:
-    """Add predicted outcome, actual outcome, correctness, and probability views.
-
-    Draws are not a real final outcome in knockout football — a level match
-    goes to extra time, then penalties, and someone advances. So by default
-    (credit_shootout=True), knockout-stage matches level on goals (result=D)
-    are re-labelled to the team that advanced on penalties (from the `winner`
-    column) instead of counting as draws. Group-stage rows are never
-    relabeled — a draw there is a genuine final outcome.
-    """
     df = df.copy()
 
-    # Normalize each probability triple (predict.py rounds to 4dp so they may
-    # not sum to exactly 1); used for a well-defined log loss.
+    # predict.py rounds to 4dp, so renormalize for a well-defined log loss
     p = df[["p_home_win", "p_draw", "p_away_win"]].astype(float)
     totals = p.sum(axis=1).replace(0.0, 1.0)
     df["n_home"] = p["p_home_win"] / totals
@@ -255,6 +191,7 @@ def annotate(df: pd.DataFrame, credit_shootout: bool = True) -> pd.DataFrame:
     df["pred_outcome"] = df.apply(pred_outcome, axis=1)
     df["actual_outcome"] = df["result"].map(RESULT_TO_OUTCOME)
 
+    # A level knockout match ends with someone advancing on penalties, so it isn't a real draw
     if credit_shootout and "winner" in df.columns:
         def credited(r):
             w = r.winner
@@ -270,15 +207,13 @@ def annotate(df: pd.DataFrame, credit_shootout: bool = True) -> pd.DataFrame:
     df["correct"] = df["pred_outcome"] == df["actual_outcome"]
 
     norm = {"home": "n_home", "draw": "n_draw", "away": "n_away"}
-    # Probability the model assigned to the outcome that actually happened.
     df["p_actual"] = df.apply(lambda r: r[norm[r.actual_outcome]], axis=1)
-    # Probability the model assigned to its own (argmax) pick — its confidence.
+    # The model's confidence in its own pick
     df["p_pick"] = df.apply(lambda r: r[norm[r.pred_outcome]], axis=1)
     return df
 
 
 def log_loss(df: pd.DataFrame) -> float:
-    """Mean multi-class log loss over all matches (natural log, clipped)."""
     eps = 1e-15
     ll = -df["p_actual"].clip(lower=eps).map(math.log)
     return float(ll.mean())
@@ -289,17 +224,9 @@ SHIPPED_COLS = ["p_home_win", "p_draw", "p_away_win"]
 
 
 def side_by_side(joined: pd.DataFrame) -> dict:
-    """
-    Raw and shootout-credited metrics for the same predictions (ML-02).
-
-    raw: the model's own W/D/L probabilities (the *_raw columns written by
-         predict.py --include-raw, i.e. before knockout redistribution and draw
-         calibration) scored goals-based, so a shootout counts as a draw.
-    shootout_credited: the shipped probabilities (knockout draw mass already
-         redistributed) scored against the team that advanced.
-    Falls back to the shipped columns for raw when *_raw columns are absent.
-    """
+    """Raw and shootout-credited metrics for the same predictions; neither is comparable to the other alone."""
     y_raw = joined["result"].map({"W": M.HOME, "D": M.DRAW, "L": M.AWAY}).to_numpy()
+    # Predictions written without --include-raw only have the shipped columns
     raw_cols = RAW_COLS if set(RAW_COLS) <= set(joined.columns) else SHIPPED_COLS
     p_raw = joined[raw_cols].astype(float).to_numpy()
     p_ship = joined[SHIPPED_COLS].astype(float).to_numpy()
@@ -343,9 +270,6 @@ def report_side_by_side(sbs: dict) -> None:
          f"mean per-class ECE (raw): {sbs['reliability']['ece_mean']:.4f}")
 
 
-# ---------------------------------------------------------------------------
-# Reporting helpers — mirror everything to _BUFFER (plain) + rich stdout
-# ---------------------------------------------------------------------------
 def hr(title: str) -> None:
     _BUFFER.append("")
     _BUFFER.append("=" * 78)
@@ -395,9 +319,6 @@ def render_table(title: str, columns: list[str], rows: list[list[str]],
             print(ln)
 
 
-# ---------------------------------------------------------------------------
-# Report
-# ---------------------------------------------------------------------------
 def matchup(r, names: dict[str, str]) -> str:
     h = names.get(r.home_team, r.home_team)
     a = names.get(r.away_team, r.away_team)
@@ -414,12 +335,11 @@ def pct(x: float) -> str:
 
 def build_report(df: pd.DataFrame, names: dict[str, str],
                  credit_shootout: bool) -> dict:
-    """Emit the full report to stdout/_BUFFER and return the metrics dict."""
     n = len(df)
     correct = int(df["correct"].sum())
     ll = log_loss(df)
 
-    hr("PREMALYTICS — WORLD CUP 2026 PREDICTION REPORT")
+    hr("NEUTRAL GROUND — WORLD CUP 2026 PREDICTION REPORT")
     line("How well did the model call the tournament, using only pre-tournament")
     line("form? Every one of the 104 matches was predicted before a ball was")
     line("kicked (training data stops the day the group stage began).")
@@ -434,14 +354,12 @@ def build_report(df: pd.DataFrame, names: dict[str, str],
         line("")
         line("Scoring mode: goals-based (penalty shootouts count as draws).")
 
-    # --- Overall accuracy ---
     hr("HEADLINE")
     line(f"[bold]Overall accuracy:[/bold] {correct}/{n} matches called correctly "
          f"= [bold]{pct(correct / n)}[/bold]")
     line(f"[bold]Log loss:[/bold] {ll:.4f}  "
          "[dim](lower is better; 1.0986 = always guessing 1/3 each)[/dim]")
 
-    # --- Accuracy by stage ---
     stage_rows = []
     by_stage: dict[str, dict] = {}
     for stage in STAGE_ORDER:
@@ -454,7 +372,6 @@ def build_report(df: pd.DataFrame, names: dict[str, str],
         stage_rows.append([STAGE_LABEL.get(stage, stage), f"{c}/{t}", pct(c / t)])
     render_table("Accuracy by stage", ["Stage", "Correct", "Accuracy"], stage_rows)
 
-    # --- Calibration ---
     hr("CALIBRATION — are the probabilities honest?")
     confident_home = df[df["p_home_win"] > 0.5]
     calibration: dict = {}
@@ -490,7 +407,6 @@ def build_report(df: pd.DataFrame, names: dict[str, str],
             "verdict": "n/a",
         }
 
-    # Broader calibration table across confidence buckets of the model's pick.
     line("")
     buckets = [(0.33, 0.40), (0.40, 0.50), (0.50, 0.60), (0.60, 0.70), (0.70, 1.01)]
     cal_rows = []
@@ -505,7 +421,6 @@ def build_report(df: pd.DataFrame, names: dict[str, str],
                  ["Confidence in pick", "Matches", "Avg stated", "Actual accuracy"],
                  cal_rows)
 
-    # --- Gutsy correct calls: correct picks with the LOWEST confidence ---
     hr("BEST CALLS — correct picks the model was least sure about")
     line("Matches the model got right despite giving its winning pick a low")
     line("probability — the closest calls it still nailed.")
@@ -524,7 +439,6 @@ def build_report(df: pd.DataFrame, names: dict[str, str],
     render_table("Gutsiest correct calls", ["Match", "Stage", "Score",
                  "Called", "Confidence"], rows)
 
-    # --- Confident misses: wrong picks where actual outcome got lowest prob ---
     hr("WORST MISSES — the results that surprised the model most")
     line("Matches the model got wrong, ranked by how little probability it gave")
     line("to what actually happened (its biggest upsets missed).")
@@ -567,9 +481,6 @@ def build_report(df: pd.DataFrame, names: dict[str, str],
     }
 
 
-# ---------------------------------------------------------------------------
-# Persistence
-# ---------------------------------------------------------------------------
 PRED_SCORED_COLS = [
     "match_date", "home_team", "away_team", "competition_stage",
     "p_home_win", "p_draw", "p_away_win", "pred_outcome", "actual_outcome",
@@ -578,7 +489,6 @@ PRED_SCORED_COLS = [
 
 
 def save_versioned(df: pd.DataFrame, metrics: dict) -> Path:
-    """Write report.txt, metrics.json, predictions_scored.csv to a timestamped dir."""
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = EVAL_OUT_ROOT / run_id
     out_dir.mkdir(parents=True, exist_ok=True)

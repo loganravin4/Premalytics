@@ -1,22 +1,6 @@
-"""
-=============================================================================
-PREMALYTICS PIPELINE — STEP 2: NORMALIZE AND EXPORT TO CSV
-=============================================================================
+"""Step 02: normalize cached FBref schedules into data/raw/{competition}/{season}/match_logs_normalized.csv.
 
-WHAT THIS SCRIPT DOES:
-  1. Reads cached FBref schedules from .soccerdata/ (populated by step 01)
-  2. Maps team names → FIFA 3-letter codes via team_map_intl.csv
-  3. Builds dual-row match records (home + away perspective per fixture)
-  4. Writes one CSV per competition + tournament year:
-
-       data-pipeline/data/raw/{competition_id}/{season_id}/match_logs_normalized.csv
-
-INPUT:
-  Step 01 cache — does not require a fresh scrape if HTML is already on disk.
-
-NEXT STEP (optional):
-  python data-pipeline/scripts/03_load_to_db.py
-=============================================================================
+Each fixture becomes two rows (home and away perspective), with teams mapped to FIFA codes via team_map_intl.csv.
 """
 
 from __future__ import annotations
@@ -65,7 +49,7 @@ def main() -> None:
     comp_ids = args.competition or None
 
     print()
-    print("PREMALYTICS STEP 2: NORMALIZE AND EXPORT TO CSV")
+    print("NEUTRAL GROUND STEP 2: NORMALIZE AND EXPORT TO CSV")
     print(f"Input:  {PROJECT_ROOT / '.soccerdata'} (soccerdata cache)")
     print(f"Output: {RAW_DATA_DIR}")
     print(f"Comps:  {comp_ids or list(COMPETITIONS.keys())}")
@@ -74,10 +58,10 @@ def main() -> None:
     importer = FBrefInternationalImporter(PROJECT_ROOT, headless=args.headless)
 
     try:
-        # force_cache=True: prefer disk cache (fast, no Chrome) after step 01
+        # Step 01 already cached the HTML, so skip Chrome
         written = importer.normalize(comp_ids, force_cache=True)
     except ValueError as e:
-        # Usually unmapped team names — add rows to team_map_intl.csv
+        # Usually an unmapped team name; add it to team_map_intl.csv
         logger.error("%s", e)
         sys.exit(1)
     except Exception as e:

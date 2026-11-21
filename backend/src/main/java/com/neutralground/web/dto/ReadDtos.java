@@ -5,10 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
-/**
- * JSON shapes returned by the read API. backend/API.md documents each one; keep the two in sync.
- * Outcomes are "H" (home win), "D" (draw), "A" (away win).
- */
+/** backend/API.md documents each of these shapes, so keep the two in sync. */
 public final class ReadDtos {
 
     private ReadDtos() {
@@ -28,10 +25,7 @@ public final class ReadDtos {
     public record PredictedScore(int home, int away) {
     }
 
-    /**
-     * pick is the most likely outcome. correct is null for unplayed matches; for a knockout match
-     * decided on penalties it is scored against the team that advanced ("shootout-credited").
-     */
+    /** correct is null when unplayed; a knockout decided on penalties is scored for the team that advanced. */
     public record MatchPrediction(String modelRunId, double pHome, double pDraw, double pAway, String pick,
                                   PredictedScore predictedScore, Double homeXg, Double awayXg, Boolean correct) {
     }

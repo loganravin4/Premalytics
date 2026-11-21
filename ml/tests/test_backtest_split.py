@@ -81,7 +81,8 @@ def test_post_processing_only_uses_folds_finished_before_start():
     rng = np.random.default_rng(0)
     mk = lambda n, s, e, idx: Fold(n, "x", pd.Timestamp(s), pd.Timestamp(e), idx, False)  # noqa: E731
     folds = [mk("a", "2014-01-01", "2014-01-20", np.arange(0, 30)),
-             mk("b", "2014-01-10", "2014-02-01", np.arange(30, 60)),   # overlaps c's start
+             # Overlaps c's start, so c can't use it
+             mk("b", "2014-01-10", "2014-02-01", np.arange(30, 60)),
              mk("c", "2014-01-25", "2014-02-10", np.arange(60, 90))]
     y = rng.integers(0, 3, 90)
     preds = {f.name: {"gbm": rng.dirichlet([2, 1, 2], 30)} for f in folds}
@@ -102,4 +103,5 @@ def test_edition_split_by_gap(gap_days):
                        "home_source": "martj42", "season_id": 2015})
     folds = find_tournament_folds(df, competitions=["copa_america"],
                                   since=pd.Timestamp("2010-01-01"))
-    assert len(folds) == 1   # both gaps < 90 days, one edition
+    # Both gaps are under the 90-day edition split
+    assert len(folds) == 1

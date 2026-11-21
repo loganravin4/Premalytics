@@ -1,24 +1,6 @@
-"""
-Shot xG training pipeline (XG-05 / XG-06).
+"""Train the shot xG models, pick the production model on a time-ordered validation fold, and save the run.
 
-Loads every shot CSV written by 01_export_statsbomb_shots.py, applies the
-contract filters (drop body_part=="other" and penalties), splits by
-tournament start date (see SHOT_* keys in ml/config.py), picks the production
-model on a time-ordered validation fold, and fits every model on the full
-training window.
-
-Model selection: logistic_full and gbm_full are fit on the tournaments before
-SHOT_VALIDATION_START_DATE and scored on the validation tournaments. The lower
-validation log loss wins; ties within 0.001 go to the logistic (simpler, and
-monotone in distance). The eval tournaments are never seen here.
-
-Artifacts -> ml/artifacts/shot_xg_{run_ts}/ :
-    logistic_xg.joblib, logistic_full.joblib, gbm_full.joblib, grid_xg.joblib,
-    shot_feature_cols.json, production_model.json, split.json
-and a pointer in ml/artifacts/latest_shot_run.txt.
-
-Usage:
-    python -m ml.pipeline.train_shots
+Usage: python -m ml.pipeline.train_shots
 """
 
 import json
@@ -49,11 +31,6 @@ SELECTION_TIE_TOLERANCE = 0.001
 
 
 def load_shots() -> pd.DataFrame:
-    """
-    Load every {slug}_shots_{season}.csv, apply contract filters, add derived
-    features. Filters: body_part=="other" (outside the feature enum) and any
-    is_penalty row (penalties are Track 3).
-    """
     paths = sorted(SHOT_DIR.glob("*_shots_*.csv"))
     if not paths:
         raise FileNotFoundError(
@@ -64,6 +41,7 @@ def load_shots() -> pd.DataFrame:
     df["season_id"] = df["season_id"].astype(str)
     df["tournament"] = df["competition_id"] + "_" + df["season_id"]
 
+    # "other" is outside the body_part enum; penalties are modeled separately.
     df = df[df["body_part"] != "other"]
     df = df[~df["is_penalty"].astype(bool)]
 
@@ -73,17 +51,12 @@ def load_shots() -> pd.DataFrame:
 
 
 def split_shots(df: pd.DataFrame, eval_start: str = SHOT_EVAL_START_DATE):
-    """
-    Tournament-date split: a shot goes to eval when its tournament started on
-    or after `eval_start`. Splitting on tournament start (not match date)
-    keeps every tournament whole on one side.
-    """
+    # Split on tournament start, not match date, so each tournament stays whole on one side.
     start = df["tournament_start_date"].astype(str)
     return df[start < eval_start], df[start >= eval_start]
 
 
 def selection_split(train: pd.DataFrame, val_start: str = SHOT_VALIDATION_START_DATE):
-    """Inner time-ordered split of the training window for model selection."""
     return split_shots(train, eval_start=val_start)
 
 
@@ -109,7 +82,7 @@ def score(y, p) -> dict:
 
 
 def select_production_model(train_df: pd.DataFrame) -> dict:
-    """Fit candidates on the inner-train fold, score the validation fold."""
+    # Selection uses an inner time-ordered fold, so the eval tournaments are never seen here.
     inner_train, val = selection_split(train_df)
     logger.info("Model selection: inner_train=%d shots, validation=%d shots (%s)",
                 len(inner_train), len(val), sorted(val["tournament"].unique()))
@@ -123,6 +96,7 @@ def select_production_model(train_df: pd.DataFrame) -> dict:
                     results[name]["brier_score"], results[name]["log_loss"])
 
     lg, gb = results["logistic_full"]["log_loss"], results["gbm_full"]["log_loss"]
+    # Near-ties go to the logistic: simpler and monotone in distance.
     winner = "gbm_full" if gb < lg - SELECTION_TIE_TOLERANCE else "logistic_full"
     return {
         "production_model": winner,

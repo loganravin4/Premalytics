@@ -13,10 +13,7 @@ interface Props {
   labels?: boolean;
 }
 
-/**
- * The three-way split, home / draw / away, with the actual result marked over its segment.
- * Meaning never rides on color alone: segment order is fixed and the result carries an ink frame.
- */
+/** Segment order is fixed and the result gets an ink frame, so meaning never rides on color alone. */
 export function ProbBar({ match, size = 'row', labels = false }: Props) {
   const order: Outcome[] = ['home', 'draw', 'away'];
   const segs = order.filter((o) => match.p[o] > 0);

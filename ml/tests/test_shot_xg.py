@@ -1,10 +1,4 @@
-"""
-Tests for the shot-level xG models, tournament-date split, leakage guard,
-freeze-frame geometry, evaluation helpers, and the xG grid export.
-
-Uses synthetic shots so the suite does not depend on the gitignored raw shot
-CSVs or on a prior training run.
-"""
+"""Shot xG models, leakage guard, tournament-date split, freeze-frame geometry, evaluation helpers, and grid export on synthetic shots."""
 
 import importlib.util
 import math
@@ -90,9 +84,6 @@ def synth():
     return _synth_shots()
 
 
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
 
 class TestModels:
     @pytest.mark.parametrize("name", list(MODEL_FACTORIES))
@@ -133,9 +124,6 @@ class TestModels:
                                                 "body_part", "situation"}
 
 
-# ---------------------------------------------------------------------------
-# Leakage guard
-# ---------------------------------------------------------------------------
 
 class TestNoForbiddenColumns:
     @pytest.mark.parametrize("name", list(FEATURE_SETS))
@@ -156,9 +144,6 @@ class TestNoForbiddenColumns:
         assert "end_location" not in exporter.SCHEMA_COLS
 
 
-# ---------------------------------------------------------------------------
-# Tournament-date split
-# ---------------------------------------------------------------------------
 
 class TestTournamentDateSplit:
     def test_eval_tournaments_start_after_train(self, synth):
@@ -188,9 +173,6 @@ class TestTournamentDateSplit:
         assert inner["tournament_start_date"].max() < val["tournament_start_date"].min()
 
 
-# ---------------------------------------------------------------------------
-# Exporter geometry (freeze frame)
-# ---------------------------------------------------------------------------
 
 class TestFreezeFrameGeometry:
     @pytest.fixture(scope="class")
@@ -206,7 +188,7 @@ class TestFreezeFrameGeometry:
         shooter = (100.0, 40.0)
         assert exp.in_shooting_cone((110.0, 40.0), shooter)
         assert not exp.in_shooting_cone((110.0, 50.0), shooter)
-        assert not exp.in_shooting_cone((95.0, 40.0), shooter)  # behind the shooter
+        assert not exp.in_shooting_cone((95.0, 40.0), shooter)
 
     def test_freeze_frame_features(self, exp):
         frame = [
@@ -217,7 +199,8 @@ class TestFreezeFrameGeometry:
         ]
         f = exp.freeze_frame_features(frame, [100.0, 40.0])
         assert f["ff_available"] is True
-        assert f["n_def_in_cone"] == 1                # keeper and teammates excluded
+        # Keeper and teammates are excluded
+        assert f["n_def_in_cone"] == 1
         assert f["nearest_def_m"] == pytest.approx(math.hypot(4, 6) * 0.9144, abs=0.01)
         assert f["gk_dist_to_goal_m"] == pytest.approx(2 * 0.9144, abs=0.01)
         assert f["gk_angle_offset_deg"] == pytest.approx(0.0, abs=0.1)
@@ -228,9 +211,6 @@ class TestFreezeFrameGeometry:
         assert math.isnan(f["n_def_in_cone"])
 
 
-# ---------------------------------------------------------------------------
-# Evaluation helpers (XG-07)
-# ---------------------------------------------------------------------------
 
 class TestEvaluationHelpers:
     def test_calibration_buckets_cover_every_shot(self, synth):
@@ -257,14 +237,12 @@ class TestEvaluationHelpers:
         assert res["log_loss_diff_ci95"][1] < 0
 
 
-# ---------------------------------------------------------------------------
-# Grid export (XG-04)
-# ---------------------------------------------------------------------------
 
 class TestGrid:
     def test_on_pitch(self):
         assert on_pitch(10, 0)
-        assert not on_pitch(40, 85)  # ~43.6 yd wide of the goal center
+        # About 43.6 yd wide of the goal center
+        assert not on_pitch(40, 85)
 
     def test_pitch_to_polar_matches_exporter(self):
         exp = _load_exporter()

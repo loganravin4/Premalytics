@@ -1,12 +1,6 @@
-"""
-WC-06 evaluation pipeline.
+"""Evaluate the latest training run's models on the WC 2022 eval split and write metrics.json.
 
-Loads the models from the latest training run, rebuilds the identical
-chronological eval split (WC 2022), and writes accuracy + log loss per
-model to metrics.json in the run directory.
-
-Usage:
-    python -m ml.pipeline.evaluate [--run-id RUN_ID]
+Usage: python -m ml.pipeline.evaluate [--run-id RUN_ID]
 """
 
 import argparse
@@ -28,19 +22,15 @@ from ml.pipeline.train import (
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
-# Encoded class order (sorted) — matches model.classes_ and predict_proba columns.
-LABELS = sorted(TARGET_ENCODE.values())  # [0, 1, 2]
+# Sorted to match model.classes_, i.e. the predict_proba column order.
+LABELS = sorted(TARGET_ENCODE.values())
 
 MODEL_NAMES = ["logistic_regression", "gradient_boosting"]
 
-# Competition slugs span friendlies, qualifiers and many tournaments after the
-# martj42 expansion. Only report a competition if it has at least this many eval
-# rows — below this, accuracy/log_loss are too noisy to be meaningful.
+# Below this many eval rows, per-competition accuracy and log loss are too noisy to report.
 MIN_COMP_EVAL_ROWS = 20
 
-# competition_id is a metadata column; the pivot prefixes it 'home_' (home and
-# away rows of a match share the same competition). It is excluded from X by
-# select_feature_columns, so we read it back off the eval features for strat:.
+# Not a model feature, so it is read back off eval_df; the pivot gives it a home_ prefix.
 COMPETITION_COL = "home_competition_id"
 
 
@@ -59,14 +49,6 @@ def _resolve_run_dir(run_id: str | None) -> Path:
 
 
 def _metrics_by_competition(eval_df, y_eval, predictions: dict) -> dict:
-    """
-    Accuracy / log loss per competition_id, for competitions with >= MIN_COMP_EVAL_ROWS
-    rows in the eval split.
-
-    The cached (y_pred, y_proba) arrays are positional (X_eval row order, which
-    is eval_df's order), so we stratify with a positional competition array read
-    off eval_df[COMPETITION_COL]. y_eval is converted to a positional array too.
-    """
     if COMPETITION_COL not in eval_df.columns:
         logger.warning(
             "%s absent from eval features — skipping by-competition breakdown.",
@@ -74,11 +56,11 @@ def _metrics_by_competition(eval_df, y_eval, predictions: dict) -> dict:
         )
         return {}
 
+    # Cached predictions are positional (eval_df row order), so mask with positional arrays.
     comp = eval_df[COMPETITION_COL].to_numpy()
     y_true = np.asarray(y_eval)
 
     out: dict = {}
-    # Sort by descending eval-row count so the most-represented comps lead.
     comp_ids, counts = np.unique(comp[pd.notna(comp)], return_counts=True)
     for comp_id in comp_ids[np.argsort(-counts)]:
         mask = comp == comp_id
@@ -109,17 +91,15 @@ def main() -> None:
     run_dir = _resolve_run_dir(args.run_id)
     logger.info(f"Evaluating run: {run_dir.name}")
 
-    # Same split logic as train.py.
     features = load_wc_features()
-    # Reproduce training's confederation one-hot columns in place so the saved
-    # feature_cols.json (which lists the dummy columns) indexes cleanly.
+    # Adds the confederation one-hot columns in place so the saved feature_cols.json indexes cleanly.
     select_feature_columns(features)
     feature_cols = json.loads((run_dir / "feature_cols.json").read_text())
     train_df, eval_df = split_train_eval(features)
     X_eval, y_eval, _ = build_xy(eval_df, feature_cols)
 
     model_metrics: dict = {}
-    predictions: dict = {}   # name -> (y_pred, y_proba) cached for stratification
+    predictions: dict = {}
     for name in MODEL_NAMES:
         model = joblib.load(run_dir / f"{name}.joblib")
         y_pred  = model.predict(X_eval)

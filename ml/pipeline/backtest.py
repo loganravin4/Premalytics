@@ -1,48 +1,6 @@
-"""
-ML-01 rolling-origin (walk-forward) backtest over every major tournament.
+"""Walk-forward backtest: retrain before each major tournament, then score it.
 
-For each tournament edition (WC, Euro, Copa América, AFCON, Asian Cup, Gold Cup)
-the models are trained on every match strictly BEFORE that tournament's first
-match and then score the whole tournament. Features are the usual leakage-safe
-pre-match features (shift(1) rolling stats, pre-match Elo), so a semi-final is
-scored with form that includes the earlier rounds, but the model itself is
-frozen at the tournament start.
-
-Tournaments starting 2010-2013 are WARM-UP folds: they are scored but only so
-later folds have out-of-sample predictions to fit post-processing on (draw
-calibration, blend weights, temperature). Reported/pooled metrics cover the
-tournaments starting 2014-01-01 onward. Every post-processor for a fold is fit
-only on folds that FINISHED before that fold started.
-
-Models (outcome order home/draw/away everywhere):
-    gbm              shipped XGBoost + isotonic pipeline, 123 features
-    gbm_raw          same XGBoost without the in-training isotonic wrapper
-    logistic_123     shipped balanced logistic, 123 features
-    elo_logistic     multinomial logistic on diff_elo + neutral-venue flag
-    favorite         always picks the higher-Elo side; probabilities are the
-                     training-set favorite/draw/underdog rates
-    priors           training-set class frequencies
-    dixon_coles      DC bivariate Poisson with rho, time decay, ridge
-  post-processed (fit on prior folds only):
-    gbm_drawcal_shipped  shipped threshold rule (0.75 / 0.60, tuned on WC 2026)
-    gbm_drawcal_wf       threshold rule re-tuned walk-forward
-    gbm_temp             temperature scaling
-    gbm_drawbias         temperature + draw log-offset
-    gbm_raw_temp         gbm_raw + temperature
-    blend                linear pool of gbm and dixon_coles
-    blend_temp           blend + temperature
-    blend_drawbias       blend + temperature + draw log-offset
-    elo_dc_blend         linear pool of elo_logistic and dixon_coles
-
-Outputs (ml/artifacts/backtest_<timestamp>/):
-    metrics.json      per-tournament + pooled metrics for every model
-    predictions.csv   every scored match x model probabilities
-    reliability.json  pooled reliability bins for every model (frontend)
-    summary.md        the pooled comparison table
-
-Usage:
-    python -m ml.pipeline.backtest [--max-folds N] [--models gbm,dixon_coles]
-                                   [--rebuild-features]
+Usage: python -m ml.pipeline.backtest [--max-folds N] [--models gbm,dixon_coles] [--rebuild-features]
 """
 
 from __future__ import annotations
@@ -83,13 +41,13 @@ MAJOR_TOURNAMENTS = [
     "fifa_world_cup", "uefa_euro", "copa_america",
     "afcon", "afc_asian_cup", "concacaf_gold_cup",
 ]
+# 2010-2013 folds are scored only so later folds have OOS predictions to fit post-processing on.
 WARMUP_START = pd.Timestamp("2010-01-01")
 REPORT_START = pd.Timestamp("2014-01-01")
-EDITION_GAP_DAYS = 90       # a gap this long between matches starts a new edition
+EDITION_GAP_DAYS = 90
 MIN_EDITION_MATCHES = 16
 
-# Dixon-Coles settings: chosen on the 2010-2013 warm-up folds only
-# (see docs/ML_EXPERIMENTS.md). 12-year training window, ~3.8-year half-life.
+# Tuned on the 2010-2013 warm-up folds only, so reported folds stay out of sample.
 DC_XI = 0.0005
 DC_L2 = 0.1
 DC_WINDOW_YEARS = 12
@@ -103,35 +61,28 @@ POST_MODELS = ["gbm_drawcal_shipped", "gbm_drawcal_wf", "gbm_temp", "gbm_drawbia
                "gbm_raw_temp", "blend", "blend_temp", "blend_drawbias", "elo_dc_blend"]
 
 
-# ----------------------------------------------------------------------------
-# Folds
-# ----------------------------------------------------------------------------
 @dataclass
 class Fold:
     name: str
     competition_id: str
     start: pd.Timestamp
     end: pd.Timestamp
-    test_index: np.ndarray       # positional indices into the feature matrix
+    # Positional (iloc) indices, not index labels.
+    test_index: np.ndarray
     warmup: bool
 
     def train_mask(self, dates: pd.Series) -> np.ndarray:
-        """Strictly before the tournament's first match."""
+        # Model is frozen at the tournament start; later rounds still see updated pre-match form.
         return (pd.to_datetime(dates) < self.start).to_numpy()
 
 
 def _drop_swapped_duplicates(features: pd.DataFrame, pos: np.ndarray) -> np.ndarray:
-    """
-    The loader keeps both the FBref and the martj42 row for some matches when
-    the two sources disagree on home/away (e.g. Euro 2020 has 9 such pairs).
-    Score each match once, preferring the FBref row (it carries real stage
-    labels). The training corpus is left as the loader builds it.
-    """
     sub = features.iloc[pos]
     key = [(d, *sorted((h, a))) for d, h, a in
            zip(pd.to_datetime(sub["match_date"]), sub["home_team"], sub["away_team"])]
     src = sub.get("home_source", pd.Series("", index=sub.index)).astype(str).to_numpy()
-    order = np.argsort(src != "fbref", kind="stable")   # fbref rows first
+    # Loader keeps both sources' rows when they disagree on home/away; prefer FBref, it has real stage labels.
+    order = np.argsort(src != "fbref", kind="stable")
     seen, keep = set(), []
     for i in order:
         if key[i] not in seen:
@@ -145,11 +96,7 @@ def find_tournament_folds(features: pd.DataFrame,
                           since: pd.Timestamp = WARMUP_START,
                           report_start: pd.Timestamp = REPORT_START,
                           min_matches: int = MIN_EDITION_MATCHES) -> list[Fold]:
-    """
-    One Fold per tournament edition. Editions are runs of a competition's
-    matches with no gap longer than EDITION_GAP_DAYS (season_id is unreliable:
-    Euro 2020 spans season ids 2020 and 2021, AFCON 2025 spans 2025 and 2026).
-    """
+    # Split editions by date gap because season_id is unreliable (Euro 2020 spans 2020 and 2021).
     comp = features["home_competition_id"].astype(str).to_numpy()
     dates = pd.to_datetime(features["match_date"])
     folds: list[Fold] = []
@@ -173,9 +120,6 @@ def find_tournament_folds(features: pd.DataFrame,
     return folds
 
 
-# ----------------------------------------------------------------------------
-# Data
-# ----------------------------------------------------------------------------
 def _raw_fingerprint() -> str:
     h = hashlib.sha1()
     for p in sorted(DATA_DIR.rglob("match_logs_normalized.csv")):
@@ -240,9 +184,6 @@ def shootout_vectors(df: pd.DataFrame, shootouts: dict) -> tuple[np.ndarray, np.
     return ko, sw
 
 
-# ----------------------------------------------------------------------------
-# Base models
-# ----------------------------------------------------------------------------
 def _weights(df: pd.DataFrame) -> np.ndarray:
     return df["home_competition_id"].map(TOURNAMENT_WEIGHTS).fillna(1.0).to_numpy(float)
 
@@ -258,7 +199,7 @@ def _y_model(df: pd.DataFrame) -> np.ndarray:
 
 def fit_predict_base(name: str, train: pd.DataFrame, test: pd.DataFrame,
                      feature_cols: list[str], start: pd.Timestamp) -> tuple[np.ndarray, dict]:
-    """Return (n_test, 3) outcome-order probabilities and a small info dict."""
+    """Fit one base model; returns probabilities in outcome order (home/draw/away), not model label order."""
     w = _weights(train)
     if name == "gbm":
         m = make_best_boosting_pipeline()
@@ -304,15 +245,9 @@ def fit_predict_base(name: str, train: pd.DataFrame, test: pd.DataFrame,
     raise ValueError(name)
 
 
-# ----------------------------------------------------------------------------
-# Post-processing, fit on prior folds only
-# ----------------------------------------------------------------------------
 def post_process(fold: Fold, folds: list[Fold], preds: dict, y_all: np.ndarray,
                  models: list[str]) -> tuple[dict, dict]:
-    """
-    Fit every post-processor on the OOS predictions of folds that ended before
-    `fold` started, then apply to `fold`. Returns (probabilities, params).
-    """
+    # Only folds that finished before this one started, so post-processing never sees the future.
     prior = [f for f in folds if f.end < fold.start and f.name in preds]
     if not prior:
         return {}, {}
@@ -353,9 +288,6 @@ def post_process(fold: Fold, folds: list[Fold], preds: dict, y_all: np.ndarray,
     return {k: v for k, v in out.items() if k in models}, params
 
 
-# ----------------------------------------------------------------------------
-# Main
-# ----------------------------------------------------------------------------
 def _pooled(names, folds, preds, y_all, ko_all, sw_all, idx_filter=None):
     out = {}
     for name in names:

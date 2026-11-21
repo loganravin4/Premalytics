@@ -1,23 +1,6 @@
-"""
-Shot xG evaluation pipeline (XG-05 / XG-06 / XG-07).
+"""Score the latest shot xG run on the eval tournaments and write shot_xg_metrics.json.
 
-Scores every model from the latest shot run on the eval tournaments (see
-SHOT_EVAL_START_DATE). Headline numbers use the men's eval shots; women's eval
-shots are reported separately.
-
-Reports, per model: Brier, log loss, ROC AUC. Also:
-  - legacy_v1: the pre-XG-05 setup (distance + angle logistic trained on
-    WC 2018 only), scored on the same eval shots as the "before" number
-  - statsbomb_reference: StatsBomb's own xG on the same shots (a benchmark
-    from a richer proprietary model; never a feature)
-  - calibration buckets (fixed probability bins with Wilson 95% intervals)
-  - per-match totals: summed model xG vs non-penalty goals per team-match
-  - mens_only ablation: the production model refit without women's shots
-
-Writes ml/artifacts/{run}/shot_xg_metrics.json and prints a summary.
-
-Usage:
-    python -m ml.pipeline.evaluate_shots [--run-id RUN_ID]
+Usage: python -m ml.pipeline.evaluate_shots [--run-id RUN_ID]
 """
 
 import argparse
@@ -80,7 +63,6 @@ def wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 
 def calibration_buckets(y: pd.Series, p: np.ndarray, edges=CALIBRATION_EDGES) -> dict:
-    """Fixed-bin reliability table plus expected calibration error (ECE)."""
     p = np.asarray(p, dtype=float)
     y = np.asarray(y, dtype=int)
     bins = []
@@ -131,16 +113,13 @@ def per_match_totals(df: pd.DataFrame, p: np.ndarray) -> dict:
 
 def paired_bootstrap_diff(df: pd.DataFrame, p_a: np.ndarray, p_b: np.ndarray,
                           n_boot: int = 2000, seed: int = 42) -> dict:
-    """
-    Match-clustered paired bootstrap of per-shot log loss and Brier
-    differences (a - b). Negative means model a is better. Resampling whole
-    matches respects the correlation between shots in one game.
-    """
+    """Match-clustered paired bootstrap of per-shot log loss and Brier differences (a - b); negative favors a."""
     y = df["label"].to_numpy()
     pa = np.clip(p_a, EPS, 1 - EPS)
     pb = np.clip(p_b, EPS, 1 - EPS)
     ll_d = -(y * np.log(pa) + (1 - y) * np.log(1 - pa)) + (y * np.log(pb) + (1 - y) * np.log(1 - pb))
     br_d = (pa - y) ** 2 - (pb - y) ** 2
+    # Resample whole matches because shots within one game are correlated.
     codes, _ = pd.factorize(df["match_id"])
     n_m = codes.max() + 1
     ll_sum = np.bincount(codes, ll_d, n_m)
@@ -181,7 +160,6 @@ def check_join_coverage(shots: pd.DataFrame) -> float | None:
 
 
 def logistic_coefficients(model) -> list[dict]:
-    """Standardized coefficients of logistic_full (for the docs)."""
     names = model.named_steps["prep"].get_feature_names_out()
     coefs = model.named_steps["clf"].coef_[0]
     order = np.argsort(-np.abs(coefs))
@@ -220,13 +198,13 @@ def main() -> None:
                     model_metrics[name]["headline"]["log_loss"],
                     model_metrics[name]["headline"]["roc_auc"])
 
-    # "Before": the shipped v1 setup — distance+angle logistic fit on WC 2018 only.
+    # The pre-XG-05 v1 setup, scored on the same shots as the "before" number.
     wc18 = train_df[train_df["tournament"] == "fifa_world_cup_2018"]
     legacy = MODEL_FACTORIES["logistic_xg"]().fit(wc18[LOGISTIC_FEATURES], wc18["label"])
     legacy_p = p_goal(legacy, head[LOGISTIC_FEATURES])
+    # Benchmark only, from StatsBomb's richer proprietary model; never a feature.
     sb_p = head["sb_xg_benchmark"].to_numpy()
 
-    # Ablation: production model without women's training shots.
     mens_train = train_df[train_df["competition_gender"] == SHOT_HEADLINE_GENDER]
     prod_feats = FEATURE_SETS[prod]
     ablation = MODEL_FACTORIES[prod]().fit(mens_train[prod_feats], mens_train["label"])

@@ -1,17 +1,6 @@
 """
-Post-hoc calibration and blending for W/D/L probabilities (ML-04, ML-05).
-
-All maps take (n, 3) probabilities in outcome order [home, draw, away] and are
-fit on OUT-OF-SAMPLE predictions from earlier walk-forward folds only. The
-backtest never fits them on the fold it scores.
-
-  TemperatureScaler   p_k ∝ p_k^(1/T)                       (1 parameter)
-  DrawBiasScaler      p_k ∝ p_k^(1/T) * exp(b * [k = draw])  (2 parameters)
-  LinearPool          w * p_a + (1 - w) * p_b               (blend weight)
-  ThresholdDrawCal    the shipped predict._apply_draw_calibration rule with
-                      (threshold, alpha) chosen by grid search
-
-Every fitter minimizes mean log loss.
+Post-hoc calibration and blending for (n, 3) [home, draw, away] probabilities.
+Fit only on out-of-sample predictions from earlier walk-forward folds, never on the fold being scored.
 """
 
 from __future__ import annotations
@@ -97,6 +86,7 @@ def apply_threshold_draw_cal(p: np.ndarray, threshold: float, alpha: float) -> n
 
 
 class ThresholdDrawCal:
+    # 1.01 disables the rule, so the search can pick "no calibration".
     THRESHOLDS = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 1.01]
     ALPHAS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
 

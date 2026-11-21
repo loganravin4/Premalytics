@@ -1,25 +1,4 @@
-"""
-=============================================================================
-WC-01b SPIKE: Probe soccerdata FBref for international leagues
-=============================================================================
-
-WHAT THIS SCRIPT DOES:
-  1. Writes custom league_dict.json under .soccerdata/config/
-  2. Imports soccerdata (must happen AFTER league_dict exists)
-  3. Calls read_schedule() for each target competition
-  4. Prints OK/FAIL per league and saves docs/wc01b_probe_results.json
-
-Used to decide which comps are safe to add to COMPETITIONS in the importer.
-
-SETUP (see docs/VENV.md):
-  py -3.12 -m venv data-pipeline\\venv
-  .\\data-pipeline\\venv\\Scripts\\pip.exe install -r requirements.txt -r ml\\requirements.txt
-  # Google Chrome required for FBref scraping
-
-RUN:
-  .\\data-pipeline\\venv\\Scripts\\python.exe data-pipeline/scripts/wc01b_probe_soccerdata.py
-=============================================================================
-"""
+"""WC-01b spike: probe which international leagues soccerdata's FBref reader can fetch; writes docs/wc01b_probe_results.json."""
 
 from __future__ import annotations
 
@@ -29,20 +8,14 @@ import sys
 import time
 from pathlib import Path
 
-# Repo root (two levels up from data-pipeline/scripts/)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SD_DIR = PROJECT_ROOT / ".soccerdata"
 CONFIG_DIR = SD_DIR / "config"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-# soccerdata reads this env var for cache + config location
 os.environ["SOCCERDATA_DIR"] = str(SD_DIR)
 
-# ---------------------------------------------------------------------------
-# Custom leagues — must be written BEFORE `import soccerdata`
-# ---------------------------------------------------------------------------
-# soccerdata loads league_dict.json once at import time; editing later has no effect.
-
+# soccerdata reads league_dict.json once at import, so it must be written first
 CUSTOM_LEAGUES = {
     "INT-Copa America": {"FBref": "Copa América", "season_code": "single-year"},
     "INT-WCQ UEFA": {"FBref": "UEFA World Cup Qualifiers", "season_code": "single-year"},
@@ -57,15 +30,10 @@ CUSTOM_LEAGUES = {
     json.dumps(CUSTOM_LEAGUES, indent=2), encoding="utf-8"
 )
 
-import soccerdata as sd  # noqa: E402  — intentional late import
+import soccerdata as sd  # noqa: E402
 
 
 def probe(league: str, seasons: list, label: str, *, headless: bool = False) -> dict:
-    """
-    Try one league + season list; return a result dict for wc01b_probe_results.json.
-
-    Does not raise — failures are captured in result["error"].
-    """
     out = {
         "label": label,
         "league": league,
@@ -75,7 +43,7 @@ def probe(league: str, seasons: list, label: str, *, headless: bool = False) -> 
         "error": None,
     }
     try:
-        # soccerdata >=1.9 uses Selenium; headless=False often avoids FBref blocks
+        # headless=False often avoids FBref blocks
         fb = sd.FBref(leagues=league, seasons=seasons, headless=headless)
         df = fb.read_schedule()
         out["ok"] = True
@@ -92,13 +60,11 @@ def main() -> None:
     print(f"soccerdata {getattr(sd, '__version__', 'unknown')}")
     print(f"SOCCERDATA_DIR={SD_DIR}\n")
 
-    # Discovery: which INT-* leagues soccerdata knows about after custom dict
     leagues = sd.FBref.available_leagues()
     intl = [x for x in leagues if x.startswith("INT-")]
     print("INT available_leagues:", intl)
     print()
 
-    # Probe one league at a time — each may launch Chrome and hit FBref
     probes = [
         ("INT-World Cup", [2018, 2022], "World Cup"),
         ("INT-European Championship", [2020, 2024], "Euro"),
@@ -110,7 +76,7 @@ def main() -> None:
     results = []
     for league, seasons, label in probes:
         results.append(probe(league, seasons, label, headless=False))
-        time.sleep(5)  # polite pause between FBref sessions
+        time.sleep(5)
 
     print("\n=== RESULTS ===")
     for r in results:

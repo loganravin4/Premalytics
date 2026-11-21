@@ -9,7 +9,6 @@ function label(m: Match) {
   }, model's pick at ${pct(m.pPick)}.`;
 }
 
-/** Every match of the volume as one mark: solid when called, struck when missed (heavier when the model was surer). */
 export function MarkGrid() {
   const [active, setActive] = useState<Match | null>(null);
   let i = 0;

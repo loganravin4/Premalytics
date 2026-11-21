@@ -1,29 +1,6 @@
-"""
-Single-shot xG inference CLI (XG-04).
+"""Score one shot's xG with the grid model (default) or the production model.
 
-Two models can answer, both from the latest shot run:
-
-  --model grid (default)  grid_xg: distance, angle, body part, situation.
-                          Same model as xg_grid.json, so the API and the
-                          frontend xG lab agree for the same inputs.
-  --model full            the production model (see production_model.json;
-                          logistic_full today) with the full at-release
-                          feature set. Freeze-frame inputs you leave out are
-                          imputed (training medians), so pass them when known.
-
-Default stdout is exactly {"p_goal", "model", "distance_m", "angle_deg"}:
-the Spring backend deserializes it with a strict ObjectMapper, so extra keys
-would break it. --verbose adds the inputs used and the timing.
-
-Latency: model load + one prediction is ~5-15 ms in-process (measured with
---verbose; "latency_ms"). Process start and the sklearn import dominate wall
-time for a CLI call; the BE-05 inference service removes that by loading once.
-
-Usage:
-    python -m ml.pipeline.predict_shot --distance 14.2 --angle 22.5
-    python -m ml.pipeline.predict_shot --distance 8 --angle 10 --body-part head --situation set_piece
-    python -m ml.pipeline.predict_shot --distance 11 --angle 5 --model full \\
-        --n-def-in-cone 1 --gk-dist-to-goal 2.5 --verbose
+Usage: python -m ml.pipeline.predict_shot --distance 14.2 --angle 22.5 [--model full] [--verbose]
 """
 
 import argparse
@@ -56,6 +33,7 @@ def build_row(args) -> dict:
     ff_given = any(v is not None for v in (args.n_def_in_cone, args.nearest_def,
                                             args.gk_dist_to_goal, args.gk_dist_to_shooter,
                                             args.gk_angle_offset))
+    # Freeze-frame inputs left out stay NaN and are imputed with training medians.
     return {
         "distance_m": args.distance,
         "angle_deg": args.angle,
@@ -76,7 +54,7 @@ def build_row(args) -> dict:
 
 
 def predict(row: dict, run_dir: Path, which: str = "grid") -> tuple[float, str]:
-    """Return (p_goal, model_name) for one shot dict."""
+    # grid_xg is the model behind xg_grid.json, so the API and the frontend xG lab agree.
     if which == "grid":
         name = "grid_xg"
     else:
@@ -115,6 +93,7 @@ def main() -> None:
     p, name = predict(row, _resolve_run_dir(args.run_id), args.model)
     latency_ms = (time.perf_counter() - t0) * 1000
 
+    # The backend's strict ObjectMapper rejects extra keys, so only --verbose may add any.
     out = {
         "p_goal": round(p, 4),
         "model": "shot_xg_grid" if name == "grid_xg" else f"shot_xg_{name}",

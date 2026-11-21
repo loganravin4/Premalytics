@@ -12,7 +12,6 @@ function Score({ m }: { m: Match }) {
   );
 }
 
-/** One ledger line: date, fixture and score, the three-way bar with the result framed, and the verdict. */
 export function MatchRow({ m, showStage = false }: { m: Match; showStage?: boolean }) {
   const home = team(m.home), away = team(m.away);
   const pens = m.shootout && m.winner ? `${m.winner} on pens` : null;

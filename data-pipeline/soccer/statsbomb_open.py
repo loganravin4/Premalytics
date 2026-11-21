@@ -1,14 +1,4 @@
-"""
-StatsBomb open-data access shared by the shot (Track 2) and penalty (Track 3)
-exporters.
-
-Reads the public GitHub raw JSON (no auth) and caches every events file as
-gzip under data-pipeline/data/raw/statsbomb_cache/ (gitignored via raw/), so
-the shot and penalty exporters download each match once.
-
-COMPETITIONS is the registry of every international competition in the open
-data that we ingest. Youth tournaments (FIFA U20 World Cup 1979) are skipped.
-"""
+"""StatsBomb open-data access shared by the shot and penalty exporters; events are cached as gzip so each match downloads once."""
 
 from __future__ import annotations
 
@@ -35,10 +25,10 @@ CACHE_DIR = PIPELINE_DIR / "data" / "raw" / "statsbomb_cache"
 class Competition:
     sb_competition: int
     sb_season: int
-    competition_id: str   # our canonical id, e.g. fifa_world_cup
-    season_id: str        # tournament year label, e.g. "2022"
-    file_slug: str        # CSV prefix: wc, euro, copa, afcon, wwc, weuro
-    gender: str           # male | female
+    competition_id: str
+    season_id: str
+    file_slug: str
+    gender: str
 
     @property
     def key(self) -> str:
@@ -46,21 +36,19 @@ class Competition:
 
 
 COMPETITIONS: list[Competition] = [
-    # Men's senior tournaments with full event coverage.
     Competition(43, 3, "fifa_world_cup", "2018", "wc", "male"),
     Competition(55, 43, "uefa_euro", "2020", "euro", "male"),
     Competition(43, 106, "fifa_world_cup", "2022", "wc", "male"),
     Competition(1267, 107, "afcon", "2023", "afcon", "male"),
     Competition(55, 282, "uefa_euro", "2024", "euro", "male"),
     Competition(223, 282, "copa_america", "2024", "copa", "male"),
-    # Historic men's World Cups: a handful of matches each (mostly finals).
+    # Historic World Cups: only a handful of matches each, mostly finals
     Competition(43, 269, "fifa_world_cup", "1958", "wc", "male"),
     Competition(43, 270, "fifa_world_cup", "1962", "wc", "male"),
     Competition(43, 272, "fifa_world_cup", "1970", "wc", "male"),
     Competition(43, 51, "fifa_world_cup", "1974", "wc", "male"),
     Competition(43, 54, "fifa_world_cup", "1986", "wc", "male"),
     Competition(43, 55, "fifa_world_cup", "1990", "wc", "male"),
-    # Women's senior tournaments.
     Competition(72, 30, "womens_world_cup", "2019", "wwc", "female"),
     Competition(53, 106, "womens_euro", "2022", "weuro", "female"),
     Competition(72, 107, "womens_world_cup", "2023", "wwc", "female"),
@@ -96,19 +84,17 @@ def _cached(path: Path, url: str):
 
 
 def get_matches(comp: Competition) -> list[dict]:
-    """Raw StatsBomb match dicts for a competition-season (cached)."""
     path = CACHE_DIR / "matches" / f"{comp.sb_competition}_{comp.sb_season}.json.gz"
     return _cached(path, MATCHES_URL.format(comp=comp.sb_competition, season=comp.sb_season))
 
 
 def get_events(match_id: int) -> list[dict]:
-    """Raw StatsBomb event dicts for one match (cached)."""
     path = CACHE_DIR / "events" / f"{match_id}.json.gz"
     return _cached(path, EVENTS_URL.format(mid=match_id))
 
 
 def prefetch_events(match_ids: list[int], workers: int = 8) -> list[int]:
-    """Download events for many matches in parallel. Returns ids that failed."""
+    """Download events for many matches in parallel and return the ids that failed."""
     failed: list[int] = []
 
     def _one(mid: int):
@@ -132,10 +118,7 @@ SB_TEAM_ALIASES = {
 
 
 def strip_womens_suffix(team_name: str) -> str:
-    """
-    Normalize a StatsBomb team name for the FIFA-code mapper:
-    'England Women's' / 'Wales W' / 'WNT Finland' -> 'England' / 'Wales' / 'Finland'.
-    """
+    """Strip women's-team markers ('England Women's', 'WNT Finland') so the name maps to a FIFA code."""
     name = team_name.strip()
     if name.startswith("WNT "):
         name = name[4:]

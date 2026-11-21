@@ -34,11 +34,13 @@ def test_credit_shootouts():
     p = np.array([[0.4, 0.4, 0.2], [0.5, 0.3, 0.2], [0.3, 0.3, 0.4]])
     y = np.array([M.DRAW, M.DRAW, M.AWAY])
     ko = np.array([False, False, True])
-    sw = np.array([0.0, np.nan, np.nan])     # match 0 decided on pens, away advanced
+    # Match 0 went to penalties and the away side advanced
+    sw = np.array([0.0, np.nan, np.nan])
     pc, yc = M.credit_shootouts(p, y, ko, sw)
     assert yc.tolist() == [M.AWAY, M.DRAW, M.AWAY]
     np.testing.assert_allclose(pc[0], [0.4 + 0.4 * 2 / 3, 0.0, 0.2 + 0.4 / 3])
-    np.testing.assert_allclose(pc[1], p[1])                 # group draw untouched
+    # Not a knockout, so the draw stands
+    np.testing.assert_allclose(pc[1], p[1])
     assert pc[2, 1] == 0.0 and pc.sum(axis=1) == pytest.approx(1.0)
     out = M.score_raw_and_credited(p, y, ko, sw)
     assert {"rps", "brier", "log_loss_raw", "log_loss_shootout_credited"} <= out.keys()
@@ -51,14 +53,16 @@ def test_reliability_bins():
     rel = M.reliability(p, y)
     assert set(rel["classes"]) == {"home", "draw", "away"}
     assert sum(b["n"] for b in rel["classes"]["home"]["bins"]) == 2000
-    assert rel["ece_mean"] < 0.05           # sampled from p, so well calibrated
+    # Labels are sampled from p, so it's calibrated by construction
+    assert rel["ece_mean"] < 0.05
 
 
 def test_temperature_recovers_overconfidence():
     rng = np.random.default_rng(1)
     true = rng.dirichlet([2, 1.5, 2], 4000)
     y = np.array([rng.choice(3, p=row) for row in true])
-    sharp = true ** 2 / (true ** 2).sum(axis=1, keepdims=True)      # T = 0.5
+    # Squaring is temperature 0.5, so the fit should recover T = 2
+    sharp = true ** 2 / (true ** 2).sum(axis=1, keepdims=True)
     ts = TemperatureScaler().fit(sharp, y)
     assert ts.t_ == pytest.approx(2.0, rel=0.15)
     assert M.log_loss(ts.transform(sharp), y) < M.log_loss(sharp, y)

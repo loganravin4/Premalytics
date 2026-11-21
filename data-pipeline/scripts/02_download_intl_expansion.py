@@ -1,21 +1,6 @@
-"""
-02_download_intl_expansion.py — expand the international training corpus.
+"""Fetch more FBref international tournaments into contract CSVs, reusing the FBref importer's normalization.
 
-Fetches major international tournaments via soccerdata/FBref and writes
-contract CSVs, growing the corpus beyond the two World Cups already on disk
-(WC 2018 / WC 2022). Targets ~800-1200 normalized rows for retraining.
-
-All normalization (score parsing, FIFA-code mapping, dual-row layout,
-stage/group inference, sample weights) is REUSED from
-data-pipeline/soccer/importers/fbref_soccerdata_importer.py — this script
-only adds the competition/season matrix, the skip-if-exists guard, a
-group-stage filter for the Nations League, and resilient per-season logging.
-
-Output (one CSV per tournament year, per DATA_CONTRACT.md):
-    data-pipeline/data/raw/{competition_id}/{season_id}/match_logs_normalized.csv
-
-Usage:
-    python data-pipeline/scripts/02_download_intl_expansion.py [--dry-run]
+Usage: python data-pipeline/scripts/02_download_intl_expansion.py [--dry-run]
 """
 
 from __future__ import annotations
@@ -33,8 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "data-pipeline"))
 
 from soccer.importers.fbref_soccerdata_importer import FBrefInternationalImporter
 
-# Use a dedicated handler with propagate=False so soccerdata's rich root-log
-# handler (installed at import time) doesn't reformat/truncate our messages.
+# soccerdata installs a rich root handler at import that would reformat and truncate these
 logger = logging.getLogger("intl_expansion")
 logger.setLevel(logging.INFO)
 logger.propagate = False
@@ -43,34 +27,26 @@ _handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s
 logger.addHandler(_handler)
 
 
-# ---------------------------------------------------------------------------
-# Competition / season matrix
-# ---------------------------------------------------------------------------
-# competition_id -> soccerdata FBref params.
-#   league  : soccerdata league id (built-in, or custom via league_dict.json
-#             written by setup_soccerdata_env — Copa & Nations League)
-#   seasons : tournament years; each is both the soccerdata season and the
-#             season_id path segment
-#   weight  : default sample_weight (1.0 majors, 0.5 Nations League)
-#   group_stage_only : keep only competition_stage == "group" rows
 COMPETITIONS: dict[str, dict] = {
     "fifa_world_cup": {
         "league": "INT-World Cup",
-        "seasons": [2014, 2018, 2022],          # 2018/2022 already on disk -> skipped
+        "seasons": [2014, 2018, 2022],
         "weight": 1.0,
     },
     "uefa_euro": {
         "league": "INT-European Championship",
-        "seasons": [2016, 2020, 2024],          # Euro 2020 played 2021; season_id "2020"
+        # Euro 2020 was played in 2021 but keeps season_id "2020"
+        "seasons": [2016, 2020, 2024],
         "weight": 1.0,
     },
     "copa_america": {
-        "league": "INT-Copa America",            # custom league (league_dict.json)
+        # Not built into soccerdata; registered via league_dict.json
+        "league": "INT-Copa America",
         "seasons": [2016, 2019, 2021, 2024],
         "weight": 1.0,
     },
     "uefa_nations_league": {
-        "league": "INT-Nations League",          # custom; group/league phase only
+        "league": "INT-Nations League",
         "seasons": [2022, 2024],
         "weight": 0.5,
         "group_stage_only": True,
@@ -83,10 +59,6 @@ RAW_DIR = PROJECT_ROOT / "data-pipeline" / "data" / "raw"
 
 def _normalize_schedule(importer, schedule: pd.DataFrame, comp_id: str,
                         season_id: str, weight: float, group_only: bool):
-    """
-    Turn an FBref schedule DataFrame into contract rows via the importer's
-    per-match normalizer. Returns (rows, unmapped_team_names, skipped_count).
-    """
     rows: list[dict] = []
     unmapped: set[str] = set()
     skipped = 0
@@ -105,7 +77,7 @@ def _normalize_schedule(importer, schedule: pd.DataFrame, comp_id: str,
         except KeyError as e:
             unmapped.add(str(e).strip("'\""))
             skipped += 1
-        except Exception as e:  # missing score, bad date, etc.
+        except Exception as e:
             skipped += 1
             logger.debug("  skip match %s vs %s: %s",
                          match.get("home_team"), match.get("away_team"), e)
@@ -119,9 +91,7 @@ def main() -> None:
                         help="Print what would be fetched without scraping or writing")
     args = parser.parse_args()
 
-    # Instantiating the importer runs setup_soccerdata_env(): it writes
-    # league_dict.json (registering Copa & Nations League) and sets
-    # SOCCERDATA_DIR — both must happen before soccerdata is imported.
+    # Must precede the soccerdata import: it writes league_dict.json and sets SOCCERDATA_DIR
     importer = FBrefInternationalImporter(PROJECT_ROOT, headless=True)
     sd = None if args.dry_run else importer._import_soccerdata()
 

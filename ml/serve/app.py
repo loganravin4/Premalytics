@@ -1,20 +1,6 @@
 """
-ml-serve: FastAPI inference service called by the Spring API (never by browsers directly).
-
-    uvicorn ml.serve.app:app --host 0.0.0.0 --port 8000      # from the repo root
-
-Endpoints:
-    GET  /health          model run ids; 200 once models are loaded
-    POST /predict/match   {"fixtures": [{home_team, away_team, match_date, competition_id,
-                           competition_stage, is_neutral_venue}]}
-                          -> {"model_run_id", "score_model_run_id", "predictions": [{home_team, away_team,
-                              p_home_win, p_draw, p_away_win, predicted_home_goals, predicted_away_goals,
-                              home_xg, away_xg}]}
-    POST /predict/shot    {"distance_m", "angle_deg", "body_part"?, "situation"?}
-                          -> {"p_goal", "model", "model_run_id", "distance_m", "angle_deg"}
-
-Environment: NG_MATCH_RUN_ID, NG_SCORE_RUN_ID, NG_SHOT_RUN_ID pin runs (default: the latest_*.txt
-pointers in ml/artifacts); NG_SHOT_MODEL_FILE picks the shot model file (default logistic_xg.joblib).
+ml-serve: FastAPI inference service, called only by the Spring API, never by browsers directly.
+Run from the repo root with uvicorn ml.serve.app:app; NG_*_RUN_ID env vars pin runs, else the latest_*.txt pointers win.
 """
 
 from __future__ import annotations

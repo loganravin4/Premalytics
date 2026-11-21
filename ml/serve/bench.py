@@ -1,9 +1,3 @@
-"""
-Latency check for ml-serve: python -m ml.serve.bench [--url http://127.0.0.1:8000] [-n 200]
-
-Sends single-fixture match requests and single shots, then prints p50 / p95 / max in ms.
-"""
-
 from __future__ import annotations
 
 import argparse

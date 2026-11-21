@@ -1,20 +1,4 @@
-"""
-=============================================================================
-Module: fbref_soccerdata_importer
-Description: International match ingest via soccerdata → FBref
-
-WHAT THIS MODULE DOES:
-  1. Configures soccerdata cache under {project_root}/.soccerdata/
-  2. Downloads FBref schedule pages (Chrome + Selenium when cache is cold)
-  3. Normalizes each fixture into TWO rows (home + away perspective)
-  4. Writes match_logs_normalized.csv per DATA_CONTRACT.md (WC pivot)
-
-OUTPUT PATH (one CSV per tournament year):
-  data-pipeline/data/raw/{competition_id}/{season_id}/match_logs_normalized.csv
-
-See also: docs/WC_SOURCES.md, DATA_CONTRACT.md, docs/VENV.md
-=============================================================================
-"""
+"""FBref international match ingest via soccerdata: cache schedules, then write dual-row match_logs_normalized.csv per tournament year."""
 
 from __future__ import annotations
 
@@ -31,28 +15,22 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Competition registry
-# ---------------------------------------------------------------------------
-# Keys are our stable slugs (used in paths and ML config).
-# Values map to soccerdata league IDs and which season years to pull.
 
 COMPETITIONS: Dict[str, Dict[str, Any]] = {
     "fifa_world_cup": {
-        "league": "INT-World Cup",           # built-in soccerdata ID
-        "seasons": [2018, 2022],             # tournament years (single-year)
-        "default_weight": 1.0,               # sample_weight for group/knockout
+        "league": "INT-World Cup",
+        "seasons": [2018, 2022],
+        "default_weight": 1.0,
     },
     "uefa_euro": {
         "league": "INT-European Championship",
-        "seasons": [2020, 2024],             # Euro 2020 played in 2021; season_id still "2020"
+        # Euro 2020 was played in 2021 but keeps season_id "2020"
+        "seasons": [2020, 2024],
         "default_weight": 1.0,
     },
 }
 
-# Extra international comps — not in upstream soccerdata by default.
-# Written to .soccerdata/config/league_dict.json before `import soccerdata`.
-# WC-01b must verify each comp actually scrapes before adding to COMPETITIONS.
+# Not built into soccerdata; WC-01b must confirm each one scrapes before it joins COMPETITIONS
 CUSTOM_LEAGUES = {
     "INT-Copa America": {"FBref": "Copa América", "season_code": "single-year"},
     "INT-WCQ UEFA": {"FBref": "UEFA World Cup Qualifiers", "season_code": "single-year"},
@@ -64,25 +42,18 @@ CUSTOM_LEAGUES = {
     },
 }
 
-# ---------------------------------------------------------------------------
-# Score parsing (FBref uses Unicode en-dashes, not ASCII hyphens)
-# ---------------------------------------------------------------------------
 
-# Split "1–1" or "6–2" on any common dash character
+# FBref scores use Unicode en dashes, not ASCII hyphens
 SCORE_SPLIT_RE = re.compile(r"[\u2013\u2014\-–]+")
 
-# Knockout games decided on pens: "(3) 1–1 (4)" → regulation goals 1–1 only
+# Shootout scores look like "(3) 1–1 (4)"; only the regulation goals count
 PENALTY_SCORE_RE = re.compile(
     r"\(\d+\)\s*(\d+)\s*[\u2013\u2014\-–]\s*(\d+)\s*\(\d+\)"
 )
 
-# Optional: "Group G" in round string → group_name column
 GROUP_LETTER_RE = re.compile(r"Group\s+([A-H])\b", re.I)
 
-# ---------------------------------------------------------------------------
-# Team name → FIFA 3-letter code
-# ---------------------------------------------------------------------------
-# Fallback when team_map_intl.csv has no row. CSV aliases override these.
+# Fallback when team_map_intl.csv has no row; CSV aliases override these
 
 DEFAULT_TEAM_CODES: Dict[str, str] = {
     "Argentina": "ARG",
@@ -148,34 +119,21 @@ DEFAULT_TEAM_CODES: Dict[str, str] = {
 
 
 def setup_soccerdata_env(project_root: Path) -> Path:
-    """
-    Prepare soccerdata before the library is imported anywhere in the process.
-
-    soccerdata reads league_dict.json at import time, so this must run first.
-    Sets SOCCERDATA_DIR to {project_root}/.soccerdata (gitignored cache).
-    """
+    """Write league_dict.json and set SOCCERDATA_DIR; soccerdata reads both at import, so call this first."""
     sd_dir = project_root / ".soccerdata"
     config_dir = sd_dir / "config"
     config_dir.mkdir(parents=True, exist_ok=True)
 
-    # Merge custom international leagues (Copa, qualifiers, etc.)
     (config_dir / "league_dict.json").write_text(
         json.dumps(CUSTOM_LEAGUES, indent=2), encoding="utf-8"
     )
 
-    # Only set if caller has not already pointed elsewhere
     os.environ.setdefault("SOCCERDATA_DIR", str(sd_dir))
     return sd_dir
 
 
 def _parse_score(score: Any) -> Tuple[Optional[int], Optional[int], Optional[float], Optional[float]]:
-    """
-    Parse FBref's score column into home/away goals (and optional xG).
-
-    Returns:
-        (home_goals, away_goals, home_xg, away_xg)
-        xG slots are usually None for international schedules.
-    """
+    """Parse FBref's score into (home_goals, away_goals, home_xg, away_xg); international schedules rarely carry xG."""
     if score is None or (isinstance(score, float) and pd.isna(score)):
         return None, None, None, None
 
@@ -183,12 +141,10 @@ def _parse_score(score: Any) -> Tuple[Optional[int], Optional[int], Optional[flo
     if not text:
         return None, None, None, None
 
-    # Penalty shootout: ignore pen counts in parentheses
     pen = PENALTY_SCORE_RE.search(text)
     if pen:
         return int(pen.group(1)), int(pen.group(2)), None, None
 
-    # Normal full-time score: "2–0", "1–1", etc.
     parts = [p.strip() for p in SCORE_SPLIT_RE.split(text) if p.strip()]
     if len(parts) != 2:
         return None, None, None, None
@@ -203,14 +159,13 @@ def _parse_score(score: Any) -> Tuple[Optional[int], Optional[int], Optional[flo
     if a is None or b is None:
         return None, None, None, None
 
-    # Decimal parts on some club tables mean xG, not goals — rare for intl
+    # Decimal values on some club tables are xG, not goals
     if a != int(a) or b != int(b):
         return None, None, float(a), float(b)
     return int(a), int(b), None, None
 
 
 def _determine_result(goals_for: Optional[int], goals_against: Optional[int]) -> Optional[str]:
-    """Map goals to W/D/L from the scoring team's perspective."""
     if goals_for is None or goals_against is None:
         return None
     if goals_for > goals_against:
@@ -221,11 +176,6 @@ def _determine_result(goals_for: Optional[int], goals_against: Optional[int]) ->
 
 
 def _infer_stage(round_name: Any) -> str:
-    """
-    Map FBref 'round' text to contract competition_stage values.
-
-    Examples: "Group stage" → group, "Quarter-finals" → knockout, "Final" → final
-    """
     if round_name is None or (isinstance(round_name, float) and pd.isna(round_name)):
         return "knockout"
     r = str(round_name).strip().lower()
@@ -241,7 +191,6 @@ def _infer_stage(round_name: Any) -> str:
 
 
 def _infer_group_name(round_name: Any) -> Optional[str]:
-    """Extract group letter (A–H) when present in round text; else NULL."""
     if round_name is None or (isinstance(round_name, float) and pd.isna(round_name)):
         return None
     m = GROUP_LETTER_RE.search(str(round_name))
@@ -256,11 +205,7 @@ def _is_neutral(venue: Any) -> bool:
 
 
 def _sample_weight(stage: str, default: float) -> float:
-    """
-    Down-weight friendlies and qualifiers for training (see DATA_CONTRACT.md).
-
-    Tournament knockout/group rows use the competition default (usually 1.0).
-    """
+    """Down-weight friendlies and qualifiers for training, per DATA_CONTRACT.md."""
     if stage == "friendly":
         return 0.3
     if stage == "qualifier":
@@ -270,17 +215,12 @@ def _sample_weight(stage: str, default: float) -> float:
 
 @dataclass
 class TeamMapper:
-    """
-    Resolve FBref display names (e.g. 'Korea Republic') to FIFA codes (e.g. 'KOR').
-
-    Loads team_map_intl.csv on top of DEFAULT_TEAM_CODES.
-    """
+    """Resolves FBref display names (e.g. 'Korea Republic') to FIFA codes, with team_map_intl.csv overriding built-ins."""
 
     alias_to_id: Dict[str, str]
 
     @classmethod
     def load(cls, csv_path: Path) -> "TeamMapper":
-        """Build lookup: start with built-ins, then overlay CSV aliases."""
         mapping = dict(DEFAULT_TEAM_CODES)
         if csv_path.exists():
             df = pd.read_csv(csv_path)
@@ -300,14 +240,6 @@ class TeamMapper:
 
 
 class FBrefInternationalImporter:
-    """
-    Main entry point for WC-03 ingest.
-
-    Typical usage:
-        importer = FBrefInternationalImporter(project_root)
-        importer.download()      # step 01 — populate .soccerdata cache
-        importer.normalize()     # step 02 — write match_logs_normalized.csv
-    """
 
     def __init__(
         self,
@@ -325,9 +257,8 @@ class FBrefInternationalImporter:
             self.project_root / "data-pipeline" / "data" / "static" / "team_map_intl.csv"
         )
         self.raw_dir = raw_dir or (self.project_root / "data-pipeline" / "data" / "raw")
-        # headless=False is often more reliable against FBref bot checks (WC-01b)
+        # headless=False gets past FBref bot checks more often
         self.headless = headless
-        # Polite delay between competitions when scraping live
         self.sleep_seconds = sleep_seconds
         self._team_mapper: Optional[TeamMapper] = None
 
@@ -339,15 +270,10 @@ class FBrefInternationalImporter:
         return self._team_mapper
 
     def list_competitions(self) -> List[str]:
-        """Return competition_id slugs configured in COMPETITIONS."""
         return list(COMPETITIONS.keys())
 
     def _import_soccerdata(self):
-        """
-        Deferred import: soccerdata must load AFTER setup_soccerdata_env().
-
-        Importing at module top level would read the wrong league_dict path.
-        """
+        """Deferred so soccerdata loads only after setup_soccerdata_env() writes its league_dict."""
         import soccerdata as sd  # noqa: WPS433
 
         return sd
@@ -358,16 +284,7 @@ class FBrefInternationalImporter:
         *,
         force: bool = False,
     ) -> Dict[str, int]:
-        """
-        Step 01: hit FBref (via Selenium) and cache schedule HTML under .soccerdata/.
-
-        Args:
-            competition_ids: Subset of COMPETITIONS keys, or None for all.
-            force: Pass through to read_schedule(force_cache=True) for current seasons.
-
-        Returns:
-            Dict mapping competition_id → number of schedule rows cached.
-        """
+        """Step 01: scrape FBref schedules into the .soccerdata cache; returns rows cached per competition."""
         sd = self._import_soccerdata()
         targets = self._resolve_competitions(competition_ids)
         results: Dict[str, int] = {}
@@ -379,7 +296,6 @@ class FBrefInternationalImporter:
             logger.info("Downloading %s (%s) seasons=%s", comp_id, league, seasons)
             try:
                 fb = sd.FBref(leagues=league, seasons=seasons, headless=self.headless)
-                # Triggers scrape on cache miss; stores HTML in .soccerdata/data/FBref/
                 df = fb.read_schedule(force_cache=force)
                 total = len(df)
                 results[comp_id] = total
@@ -387,7 +303,6 @@ class FBrefInternationalImporter:
             except Exception as e:
                 logger.error("[FAIL] %s: %s", comp_id, e)
                 results[comp_id] = 0
-            # Be polite to FBref when downloading multiple comps
             time.sleep(self.sleep_seconds)
 
         return results
@@ -398,18 +313,7 @@ class FBrefInternationalImporter:
         *,
         force_cache: bool = True,
     ) -> Dict[str, int]:
-        """
-        Step 02: read cached schedules and write contract CSVs.
-
-        Args:
-            force_cache: Prefer disk cache (True = do not re-scrape current season).
-
-        Returns:
-            Dict mapping output file path → row count written.
-
-        Raises:
-            ValueError: if any team name cannot be mapped to a FIFA code.
-        """
+        """Step 02: write contract CSVs from cached schedules; raises ValueError listing every unmapped team."""
         sd = self._import_soccerdata()
         targets = self._resolve_competitions(competition_ids)
         written: Dict[str, int] = {}
@@ -431,17 +335,14 @@ class FBrefInternationalImporter:
                 logger.warning("No schedule rows for %s", comp_id)
                 continue
 
-            # Multi-index (league, season, game) → flat columns for iteration
             schedule = schedule.reset_index()
 
-            # One output file per tournament year (season_id = "2018", "2022", …)
             for season_val, season_df in schedule.groupby("season"):
                 season_id = str(int(season_val))
                 rows: List[Dict[str, Any]] = []
 
                 for _, match in season_df.iterrows():
                     try:
-                        # Each match → 2 rows (home perspective + away perspective)
                         pair = self._match_to_rows(
                             match,
                             competition_id=comp_id,
@@ -450,7 +351,7 @@ class FBrefInternationalImporter:
                         )
                         rows.extend(pair)
                     except KeyError as e:
-                        # Collect all unmapped names before failing (better error message)
+                        # Collect every unmapped name before failing so one run reports them all
                         unmapped.add(str(e).strip("'\""))
                     except Exception as e:
                         logger.warning(
@@ -485,7 +386,6 @@ class FBrefInternationalImporter:
     def _resolve_competitions(
         self, competition_ids: Optional[Iterable[str]]
     ) -> Dict[str, Dict[str, Any]]:
-        """Validate CLI --competition values against COMPETITIONS registry."""
         if competition_ids is None:
             return dict(COMPETITIONS)
         out = {}
@@ -503,11 +403,6 @@ class FBrefInternationalImporter:
         season_id: str,
         default_weight: float,
     ) -> List[Dict[str, Any]]:
-        """
-        Convert one FBref schedule row into two contract rows (dual-row format).
-
-        match_id format: {yyyymmdd}_{home_fifa}_{away_fifa} (lowercase codes).
-        """
         home_name = str(match["home_team"]).strip()
         away_name = str(match["away_team"]).strip()
         home_id = self.team_mapper.resolve(home_name)
@@ -519,7 +414,6 @@ class FBrefInternationalImporter:
         date_str = match_date.strftime("%Y-%m-%d")
         date_compact = date_str.replace("-", "")
 
-        # Stable ID: date + designated home/away FIFA codes (see DATA_CONTRACT.md)
         match_id = f"{date_compact}_{home_id.lower()}_{away_id.lower()}"
 
         home_goals, away_goals, home_xg, away_xg = _parse_score(match.get("score"))
@@ -541,7 +435,6 @@ class FBrefInternationalImporter:
         if pd.isna(source_key):
             source_key = None
 
-        # Shared columns — identical on both rows except team-specific fields below
         base = {
             "match_id": match_id,
             "competition_id": competition_id,
@@ -554,7 +447,7 @@ class FBrefInternationalImporter:
             "sample_weight": weight,
             "source": "fbref",
             "source_match_key": source_key,
-            # Shot/xG detail columns reserved for future read_team_match_stats() merge
+            # Reserved for a future read_team_match_stats() merge
             "xg_for": None,
             "xg_against": None,
             "shots_for": None,
@@ -574,7 +467,6 @@ class FBrefInternationalImporter:
         else:
             base_home_xg, base_away_xg = None, None
 
-        # Row 1: home team perspective (venue = Home)
         home_row = {
             **base,
             "team_id": home_id,
@@ -586,7 +478,6 @@ class FBrefInternationalImporter:
             "xg_for": base_home_xg,
             "xg_against": base_away_xg,
         }
-        # Row 2: away team perspective (goals swapped)
         away_row = {
             **base,
             "team_id": away_id,

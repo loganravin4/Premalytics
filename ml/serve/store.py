@@ -1,11 +1,6 @@
 """
 Model loading for ml-serve.
-
-The prediction logic stays in ml/pipeline (predict.py, predict_scores.py), which the ML track owns
-and changes. Those functions call joblib.load on every invocation, which is what made the old
-per-request subprocess slow. ModelStore installs a process-wide memoizing joblib.load so the
-pipeline code runs unchanged while each artifact is read from disk once, then warms every model at
-startup. Run ids are pinned when the store is built; restart the service to pick up a new run.
+ml/pipeline calls joblib.load on every prediction, so a process-wide memoizing joblib.load lets that code run unchanged while each artifact is read once.
 """
 
 from __future__ import annotations
@@ -87,6 +82,7 @@ class ModelStore:
 
         install_memoized_joblib_load()
         self.artifacts = ARTIFACTS_DIR
+        # Run ids are pinned here; restart the service to pick up a new run.
         self.match_run_id = match_run_id or _read_pointer(ARTIFACTS_DIR, "latest_run.txt")
         if not self.match_run_id:
             raise RuntimeError("No match model run. Train first: python -m ml.pipeline.train")
@@ -137,8 +133,7 @@ class ModelStore:
         if self.score_run_id:
             install_score_reuse()
             scores = _original_score_fixtures(frame, run_id=self.score_run_id)
-            # predict_match_outcomes scores knockout fixtures again for its draw redistribution;
-            # hand it the result computed above instead of running the score model twice.
+            # predict_match_outcomes rescores knockouts for draw redistribution; reuse these instead.
             _reuse.current = (frame, self.score_run_id, scores)
         try:
             outcomes = predict_match_outcomes(frame, run_id=self.match_run_id, score_run_id=self.score_run_id)

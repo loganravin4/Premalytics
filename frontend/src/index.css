@@ -100,7 +100,6 @@ a {
   scrollbar-color: var(--rule) transparent;
 }
 
-/* Condensed display numerals and running heads. */
 .display {
   font-stretch: 62%;
   font-weight: 850;

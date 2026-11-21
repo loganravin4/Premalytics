@@ -15,7 +15,6 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 
-/** Request and response bodies for the ad-hoc inference endpoints. */
 public final class PredictionDtos {
 
     public static final String STAGE_PATTERN =

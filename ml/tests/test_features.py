@@ -1,9 +1,4 @@
-"""
-Tests for critical feature transformations.
-
-Key property verified: no data leakage — features for match i use only
-matches 0..i-1 (strictly prior dates).
-"""
+"""Feature transforms must not leak: features for match i use only strictly earlier matches."""
 
 import numpy as np
 import pandas as pd
@@ -22,14 +17,8 @@ from ml.features.loader import _clean_and_validate
 from ml.config import TARGET_COL, ELO_INITIAL, ELO_K_FACTOR
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 def _make_team_df(n: int = 15, team: str = "BRA", opponent: str = "ARG") -> pd.DataFrame:
-    """
-    Create a synthetic single-team DataFrame with n matches in chronological order.
-    """
     dates   = pd.date_range("2021-08-14", periods=n, freq="7D")
     results = ["W", "D", "L", "W", "W", "D", "L", "W", "D", "W", "L", "W", "W", "D", "L"][:n]
     goals_f = [2, 1, 0, 3, 2, 1, 0, 2, 1, 3, 0, 2, 3, 1, 0][:n]
@@ -57,9 +46,6 @@ def _make_team_df(n: int = 15, team: str = "BRA", opponent: str = "ARG") -> pd.D
 
 
 def _make_dual_row_df(n_per_team: int = 15) -> pd.DataFrame:
-    """
-    Create a dual-row DataFrame with two teams, n_per_team matches each.
-    """
     home_df = _make_team_df(n_per_team, team="BRA", opponent="ARG")
     home_df["venue"] = "Home"
 
@@ -73,25 +59,16 @@ def _make_dual_row_df(n_per_team: int = 15) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# Leakage tests
-# ---------------------------------------------------------------------------
 
 class TestNoLeakage:
-    """
-    Verify that rolling features for row i do not use information from row i.
-    The golden rule: shift(1) ensures the current match's own stats are excluded.
-    """
+    """shift(1) keeps each match's own stats out of its rolling features."""
 
     def test_rolling_form_does_not_use_current_match(self):
         df = _make_team_df(n=10)
         result = _compute_team_rolling(df)
 
-        # For match index 1 (second match), form_pts_5 should only use match 0
-        # For match index 0 (first match), form_pts_5 should be NaN (no history)
         assert pd.isna(result.iloc[0]["form_pts_5"]), "First match must have no prior form"
 
-        # For match 1, form_pts_5 uses only match 0
         row0_pts = {"W": 3, "D": 1, "L": 0}[df.iloc[0]["result"]]
         assert result.iloc[1]["form_pts_5"] == pytest.approx(row0_pts, abs=1e-6), \
             "form_pts_5 for match 1 must equal match 0's points only"
@@ -100,20 +77,14 @@ class TestNoLeakage:
         df = _make_team_df(n=10)
         result = _compute_team_rolling(df)
 
-        # Match index 2: gf_avg_3 should average goals_for of matches 0 and 1 only
         gf_01 = df.iloc[:2]["goals_for"].mean()
         assert result.iloc[2]["gf_avg_3"] == pytest.approx(gf_01, abs=1e-6), \
             "gf_avg_3 at index 2 must use only matches 0 and 1"
 
     def test_no_future_leakage_in_rolling(self):
-        """
-        Verify that feature values strictly increase in information content
-        as we move forward in time (i.e., they never 'see' future matches).
-        """
         df = _make_team_df(n=12)
         result = _compute_team_rolling(df)
 
-        # The feature at row i should equal what you'd compute from df.iloc[:i]
         for i in range(2, 6):
             past     = df.iloc[:i]["goals_for"]
             expected = past.tail(3).mean()
@@ -124,19 +95,14 @@ class TestNoLeakage:
     def test_rest_days_no_leakage(self):
         df = _make_team_df(n=5)
         result = _compute_team_rolling(df)
-        # First match has NaN rest_days (no prior match)
         assert pd.isna(result.iloc[0]["rest_days"]), "First match must have NaN rest_days"
-        # Second match: 7 days after the first (weekly matches)
         assert result.iloc[1]["rest_days"] == pytest.approx(7.0, abs=1.0)
 
     def test_home_form_uses_only_home_games(self):
         df = _make_team_df(n=10)
-        # Make matches 0,2,4,6,8 home; others away
         df["venue"] = ["Home" if i % 2 == 0 else "Away" for i in range(10)]
         result = _compute_team_rolling(df)
 
-        # at_home_win_rate_5 should only reflect home match results
-        # For match 4 (5th match, index 4), only matches 0 and 2 are home (prior home matches)
         prior_home = df.iloc[:4][df.iloc[:4]["venue"] == "Home"]
         expected   = (prior_home["result"] == "W").mean() if len(prior_home) > 0 else np.nan
         actual     = result.iloc[4]["at_home_win_rate_5"]
@@ -146,13 +112,9 @@ class TestNoLeakage:
             assert actual == pytest.approx(expected, abs=1e-6)
 
 
-# ---------------------------------------------------------------------------
-# Data quality tests
-# ---------------------------------------------------------------------------
 
 class TestDataQuality:
     def test_result_consistency_check(self):
-        # Create intentionally bad row
         df = pd.DataFrame({
             "match_id":    ["m001"],
             "season_id":   ["2022"],
@@ -161,7 +123,7 @@ class TestDataQuality:
             "match_date":  [pd.Timestamp("2021-08-14")],
             "venue":       ["Home"],
             "result":      ["W"],
-            "goals_for":   [0],    # W but 0 goals — inconsistent
+            "goals_for":   [0],
             "goals_against": [2],
         })
         result = _clean_and_validate(df)
@@ -190,7 +152,7 @@ class TestDataQuality:
             "venue": "Home", "result": "W",
             "goals_for": 2, "goals_against": 0,
         }
-        df = pd.DataFrame([base, base])  # exact duplicate
+        df = pd.DataFrame([base, base])
         result = _clean_and_validate(df)
         assert len(result) == 1, "Duplicate rows must be deduplicated"
 
@@ -202,7 +164,7 @@ class TestDataQuality:
             "opponent_id": ["ARG"],
             "match_date":  [pd.Timestamp("2021-08-14")],
             "venue":       ["Home"],
-            "result":      ["X"],   # invalid
+            "result":      ["X"],
             "goals_for":   [2],
             "goals_against": [0],
         })
@@ -210,9 +172,6 @@ class TestDataQuality:
         assert len(result) == 0, "Invalid result must be dropped"
 
 
-# ---------------------------------------------------------------------------
-# Pivot tests
-# ---------------------------------------------------------------------------
 
 class TestPivot:
     def test_pivot_halves_row_count(self):
@@ -234,7 +193,6 @@ class TestPivot:
         df_features = build_team_features(df)
         df_matches  = pivot_to_match_rows(df_features)
 
-        # When home team won (result=W from home perspective), outcome should be H
         for _, row in df_matches.iterrows():
             home = df[(df["team_id"] == row["home_team"]) & (df["match_id"] == row["match_id"])]
             if home.empty:
@@ -259,23 +217,14 @@ class TestPivot:
             f"home/away feature count mismatch: {len(home_feats)} vs {len(away_feats)}"
 
 
-# ---------------------------------------------------------------------------
-# Chronological split tests
-# ---------------------------------------------------------------------------
 
 class TestChronologicalSplit:
     def test_train_features_do_not_use_test_data(self):
-        """
-        Critical: when we split chronologically, training features must not
-        contain any information from the later tournament's match outcomes.
-        """
         df = _make_dual_row_df(n_per_team=14)
 
-        # Assign two tournament seasons (single-year WC/Euro season_id format)
         mid = len(df) // 2
         df.loc[df.index[:mid], "season_id"] = "2021"
         df.loc[df.index[mid:], "season_id"] = "2022"
-        # Fix dates so season 1 is clearly before season 2
         df.loc[df.index[:mid], "match_date"] = pd.date_range("2021-08-14", periods=mid, freq="7D")
         df.loc[df.index[mid:], "match_date"] = pd.date_range("2022-08-14", periods=len(df)-mid, freq="7D")
 
@@ -289,15 +238,9 @@ class TestChronologicalSplit:
             "All training matches must precede all test matches"
 
 
-# ---------------------------------------------------------------------------
-# ELO leakage tests
-# ---------------------------------------------------------------------------
 
 def _make_all_wins_dual_df(n: int = 6) -> pd.DataFrame:
-    """
-    Dual-row DataFrame where BRA (Home) beats ARG (Away) in every match.
-    All matches on distinct weekly dates.
-    """
+    """BRA (home) beats ARG (away) every week."""
     dates   = pd.date_range("2021-08-14", periods=n, freq="7D")
     goals_f = [2] * n
     goals_a = [0] * n
@@ -334,7 +277,6 @@ def _make_all_wins_dual_df(n: int = 6) -> pd.DataFrame:
 
 
 class TestEloLeakage:
-    """Verify that ELO features encode no future information."""
 
     def test_first_match_elo_is_initial(self):
         df = _make_all_wins_dual_df(n=5)
@@ -350,15 +292,12 @@ class TestEloLeakage:
                 f"{team}: first-match ELO should be {ELO_INITIAL}, got {first_elo}"
 
     def test_elo_at_match1_reflects_only_match0_result(self):
-        """
-        After one win against an equal opponent (both at ELO_INITIAL), the winner's
-        ELO should be exactly ELO_INITIAL + K*(1 - 0.5) = ELO_INITIAL + K/2.
-        """
+        """One win over an equal opponent moves ELO by exactly K/2."""
         df = _make_all_wins_dual_df(n=3)
         result = compute_elo_features(df)
 
         bra = result[result["team_id"] == "BRA"].sort_values("match_date")
-        expected = ELO_INITIAL + ELO_K_FACTOR * 0.5   # win vs equal opponent
+        expected = ELO_INITIAL + ELO_K_FACTOR * 0.5
         assert bra.iloc[1]["elo"] == pytest.approx(expected, abs=1e-6), \
             "ELO at match 1 must reflect only the match-0 win, not the match-1 outcome"
 
@@ -383,10 +322,7 @@ class TestEloLeakage:
                 f"ELO should fall after every loss: match {i} ({elos[i]:.2f}) >= match {i-1} ({elos[i-1]:.2f})"
 
     def test_no_same_day_elo_leakage(self):
-        """
-        Two matches on the same date must each use start-of-day ELOs, not each
-        other's post-match ELO.  All four teams are new → all ELOs must be ELO_INITIAL.
-        """
+        """Same-day matches use start-of-day ELOs, so four new teams all stay at ELO_INITIAL."""
         same_date = pd.Timestamp("2021-09-01")
         rows = [
             {"match_id": "m001", "season_id": "2022", "team_id": "BRA",
@@ -430,23 +366,15 @@ class TestEloLeakage:
         assert "away_elo" in df_pivot.columns, "away_elo must be present after pivot"
 
     def test_elo_not_in_meta_cols_so_pivoted_correctly(self):
-        """
-        home_elo and away_elo should differ by match 2+ once one team has
-        accumulated wins.  If they were both ELO_INITIAL forever, something leaked
-        or the column wasn't pivoted at all.
-        """
+        """By match 3 the unbeaten home side's ELO must exceed the away side's, or the column wasn't pivoted."""
         df = _make_all_wins_dual_df(n=8)
         df_features = build_features(df, include_h2h=False)
 
-        # By match 3 BRA should have higher ELO than ARG
         later_matches = df_features.sort_values("match_date").iloc[3:]
         assert (later_matches["home_elo"] > later_matches["away_elo"]).all(), \
             "BRA (home, unbeaten) should have higher ELO than ARG (away, winless) by match 3"
 
 
-# ---------------------------------------------------------------------------
-# Differential feature tests
-# ---------------------------------------------------------------------------
 
 class TestDiffFeatures:
     def test_diff_elo_equals_home_minus_away_elo(self):
@@ -484,10 +412,7 @@ class TestDiffFeatures:
         assert "diff_elo" in feat_cols, "diff_elo must be a feature"
 
     def test_diff_features_no_new_leakage(self):
-        """
-        Differential features are home minus away from already-shifted rolling stats.
-        Verify they equal exactly that arithmetic — no extra shifts or accumulations.
-        """
+        """Diff features are plain home minus away of already-shifted stats, with no extra shifts."""
         df = _make_dual_row_df(n_per_team=12)
         df_features = build_features(df, include_h2h=False)
 

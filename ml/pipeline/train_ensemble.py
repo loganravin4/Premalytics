@@ -1,20 +1,6 @@
-"""
-Attach the walk-forward-selected ensemble to a trained match run (ML-04/05).
+"""Attach the GBM + Dixon-Coles ensemble (ensemble.json, dixon_coles.joblib) to a trained match run.
 
-Fits a Dixon-Coles model on the same training window as the GBM run (matches
-before TRAIN_CUTOFF_DATE) and writes `ensemble.json` + `dixon_coles.joblib`
-into that run directory. predict.py then serves
-
-    p = calibrate( w * p_gbm + (1 - w) * p_dixon_coles )
-
-instead of the GBM + threshold draw rule. The blend weight and calibration
-parameters are NOT fit here: they are read from a backtest's last reported
-fold before the cutoff (`fifa_world_cup_2026` post_params), i.e. fit only on
-out-of-sample tournament predictions that finished before WC 2026.
-
-Usage:
-    python -m ml.pipeline.train_ensemble [--run-id RUN] [--backtest-dir DIR]
-                                         [--variant blend_drawbias]
+Usage: python -m ml.pipeline.train_ensemble [--run-id RUN] [--backtest-dir DIR] [--variant blend_drawbias]
 """
 
 from __future__ import annotations
@@ -43,6 +29,7 @@ def fit_dixon_coles(features: pd.DataFrame, cutoff: str) -> DixonColes:
     start = pd.Timestamp(cutoff)
     f = features.copy()
     f["match_date"] = pd.to_datetime(f["match_date"])
+    # Same training window as the GBM run: nothing on or after the cutoff.
     tr = f[(f["match_date"] < start)
            & (f["match_date"] >= start - pd.DateOffset(years=B.DC_WINDOW_YEARS))]
     return DixonColes(xi=B.DC_XI, l2=B.DC_L2).fit(
@@ -62,6 +49,7 @@ def main() -> None:
     bdir = Path(args.backtest_dir) if args.backtest_dir else sorted(
         p for p in ARTIFACTS_DIR.glob("backtest_*") if (p / "metrics.json").exists())[-1]
     meta = json.loads((bdir / "metrics.json").read_text())
+    # Blend and calibration params come from the backtest, fit only on folds that finished before WC 2026.
     params = meta["per_tournament"][PARAMS_FOLD]["post_params"][args.variant]
     logger.info("Ensemble params from %s / %s: %s", bdir.name, PARAMS_FOLD, params)
 

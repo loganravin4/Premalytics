@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-/** Calls ml/serve over HTTP. Timeouts come from neutralground.inference.* (see InferenceConfig). */
 @Component
 public class HttpInferenceClient implements InferenceClient {
 

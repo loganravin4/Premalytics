@@ -1,12 +1,4 @@
-"""
-Tests for xG enrichment reliability.
-
-Covers:
-- Missing source behavior (no crash, no silent data)
-- Partial match behavior (only matched rows enriched)
-- No silent corruption (unmatched rows stay null; existing values not overwritten)
-- FBRef loader correctness (normalized CSV excluded, correct file picked)
-"""
+"""xG enrichment survives missing sources, fills only matched null fields, and picks the right FBref file."""
 
 import numpy as np
 import pandas as pd
@@ -15,9 +7,6 @@ import pytest
 from ml.features.loader import _fill_xg_from_lookup, _load_fbref_xg
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _make_rows(n: int = 4, team: str = "Arsenal") -> pd.DataFrame:
     dates = pd.date_range("2021-08-14", periods=n, freq="7D")
@@ -44,9 +33,6 @@ def _key(df: pd.DataFrame, i: int) -> tuple:
     )
 
 
-# ---------------------------------------------------------------------------
-# Missing source behavior
-# ---------------------------------------------------------------------------
 
 class TestMissingSource:
     def test_empty_data_dir_returns_empty_lookup(self, tmp_path):
@@ -69,9 +55,6 @@ class TestMissingSource:
         assert lookup == {}
 
 
-# ---------------------------------------------------------------------------
-# Partial match behavior
-# ---------------------------------------------------------------------------
 
 class TestPartialMatch:
     def test_only_matched_rows_get_xg(self):
@@ -102,14 +85,11 @@ class TestPartialMatch:
         assert result.at[0, "xg_against"] == pytest.approx(0.0)
 
 
-# ---------------------------------------------------------------------------
-# No silent corruption
-# ---------------------------------------------------------------------------
 
 class TestNoSilentCorruption:
     def test_unmatched_rows_stay_null(self):
         df = _make_rows(n=2)
-        lookup = {}  # no matches
+        lookup = {}
         result = _fill_xg_from_lookup(df, lookup)
         assert result["xg_for"].isna().all()
         assert result["xg_against"].isna().all()
@@ -118,7 +98,6 @@ class TestNoSilentCorruption:
         df = _make_rows(n=2)
         df.loc[0, "xg_for"] = 1.5
         df.loc[0, "xg_against"] = 0.3
-        # Lookup has a conflicting entry for row 0
         lookup = {_key(df, 0): (9.9, 9.9)}
         result = _fill_xg_from_lookup(df, lookup)
         assert result.at[0, "xg_for"] == pytest.approx(1.5)
@@ -126,11 +105,11 @@ class TestNoSilentCorruption:
 
     def test_partial_existing_xg_fills_only_null_field(self):
         df = _make_rows(n=1)
-        df.loc[0, "xg_for"] = 1.5   # set; xg_against still null
+        df.loc[0, "xg_for"] = 1.5
         lookup = {_key(df, 0): (9.9, 0.8)}
         result = _fill_xg_from_lookup(df, lookup)
-        assert result.at[0, "xg_for"] == pytest.approx(1.5)   # unchanged
-        assert result.at[0, "xg_against"] == pytest.approx(0.8)  # filled
+        assert result.at[0, "xg_for"] == pytest.approx(1.5)
+        assert result.at[0, "xg_against"] == pytest.approx(0.8)
 
     def test_row_count_unchanged_after_enrichment(self):
         df = _make_rows(n=10)
@@ -146,9 +125,6 @@ class TestNoSilentCorruption:
         assert set(result.columns) == cols_before
 
 
-# ---------------------------------------------------------------------------
-# FBRef loader: normalized CSV exclusion and best-file selection
-# ---------------------------------------------------------------------------
 
 class TestFBRefLookupBuild:
     def _write_fbref_csv(self, path, date, opponent, xgf, xga):
@@ -163,10 +139,9 @@ class TestFBRefLookupBuild:
         team_dir = tmp_path / "2021-2022" / "Arsenal"
         team_dir.mkdir(parents=True)
 
-        # FBRef CSV with real xG
         self._write_fbref_csv(team_dir / "match_logs_20251019_004130.csv",
                               "2021-08-13", "Brentford", 1.3, 0.7)
-        # Normalized CSV with no xG (simulates real layout)
+        # Mirrors the real layout, where the normalized CSV sits beside the FBref files
         pd.DataFrame({"date": ["2021-08-13"], "opponent": ["Brentford"]}).to_csv(
             team_dir / "match_logs_normalized.csv", index=False
         )
@@ -180,10 +155,9 @@ class TestFBRefLookupBuild:
         team_dir = tmp_path / "2021-2022" / "Arsenal"
         team_dir.mkdir(parents=True)
 
-        # Older file with xG
         self._write_fbref_csv(team_dir / "match_logs_20251019_004130.csv",
                               "2021-08-13", "Brentford", 1.3, 0.7)
-        # Newer file without xG column (simulates 2026 rescrape)
+        # A 2026 rescrape left newer files without xG
         pd.DataFrame({
             "date": ["2021-08-13"],
             "opponent": ["Brentford"],
@@ -212,7 +186,7 @@ class TestFBRefLookupBuild:
         lookup = _load_fbref_xg(tmp_path, ["2021-2022"])
         assert lookup == {}, "File with all-null xG must be skipped"
 
-    def test_unrecognised_folder_ignored(self, tmp_path):
+    def test_unrecognized_folder_ignored(self, tmp_path):
         team_dir = tmp_path / "2021-2022" / "unknown_team_xyz"
         team_dir.mkdir(parents=True)
         self._write_fbref_csv(team_dir / "match_logs_20251019.csv",
