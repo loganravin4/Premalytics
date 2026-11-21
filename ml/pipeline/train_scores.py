@@ -21,7 +21,7 @@ Usage:
 
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
 import numpy as np
 import pandas as pd
@@ -96,6 +96,16 @@ def main() -> None:
     (run_dir / "score_feature_cols.json").write_text(json.dumps(
         {"use_xg": use_xg, "features": feature_columns(use_xg)}, indent=2))
     (ARTIFACTS_DIR / "latest_score_run.txt").write_text(run_dir.name)
+
+    metrics = {
+        "run_date": date.today().isoformat(),
+        "n_train": int(len(train_df)),
+        "n_eval": int(len(eval_df)),
+        "use_xg": use_xg,
+        "mae_home_goals": mae_home,
+        "mae_away_goals": mae_away,
+    }
+    (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
 
     logger.info("n_train=%d  n_eval=%d", len(train_df), len(eval_df))
     logger.info("MAE home goals=%.3f  MAE away goals=%.3f", mae_home, mae_away)
