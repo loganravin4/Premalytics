@@ -28,7 +28,7 @@ import joblib
 import pandas as pd
 
 from ml.config import ARTIFACTS_DIR, ELO_INITIAL, LOG_FORMAT
-from ml.pipeline.predict import _team_latest_vector, load_fixtures
+from ml.pipeline.predict import _team_latest_vector, fixture_cutoffs, load_fixtures
 from ml.models.score_predictor import (
     prepare_score_features, predict_scoreline,
 )
@@ -52,10 +52,12 @@ def _resolve_score_run(run_id: str | None = None) -> Path:
 
 
 def _fixture_score_row(features: pd.DataFrame, prefixed_cols: list[str],
-                       home_team: str, away_team: str, is_neutral: float) -> dict:
-    """Assemble one score-model feature row from each team's latest form."""
-    home_vec = _team_latest_vector(features, prefixed_cols, home_team)
-    away_vec = _team_latest_vector(features, prefixed_cols, away_team)
+                       home_team: str, away_team: str, is_neutral: float,
+                       before: pd.Timestamp | None = None) -> dict:
+    """Assemble one score-model feature row from each team's latest form
+    (rows dated on/after `before` are ignored, see predict.fixture_cutoffs)."""
+    home_vec = _team_latest_vector(features, prefixed_cols, home_team, before)
+    away_vec = _team_latest_vector(features, prefixed_cols, away_team, before)
 
     def g(vec, key, default=0.0):
         v = vec.get(key, default)
@@ -75,7 +77,8 @@ def _fixture_score_row(features: pd.DataFrame, prefixed_cols: list[str],
     }
 
 
-def score_fixtures(fixtures: pd.DataFrame, run_id: str | None = None) -> list[dict]:
+def score_fixtures(fixtures: pd.DataFrame, run_id: str | None = None,
+                   as_of: str | None = None) -> list[dict]:
     """Return scoreline predictions (list of dicts) for each fixture row."""
     run_dir = _resolve_score_run(run_id)
     meta = json.loads((run_dir / "score_feature_cols.json").read_text())
@@ -92,9 +95,10 @@ def score_fixtures(fixtures: pd.DataFrame, run_id: str | None = None) -> list[di
 
     neutral = (fixtures["is_neutral_venue"] if "is_neutral_venue" in fixtures.columns
                else pd.Series([True] * len(fixtures)))
+    cutoffs = fixture_cutoffs(fixtures, as_of)
     rows = [
         _fixture_score_row(features, prefixed_cols, f.home_team, f.away_team,
-                           bool(neutral.iloc[i]))
+                           bool(neutral.iloc[i]), cutoffs[i])
         for i, f in enumerate(fixtures.itertuples())
     ]
     X = prepare_score_features(pd.DataFrame(rows), use_xg)

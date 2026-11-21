@@ -21,8 +21,15 @@ appearance in that matrix and take that match's per-team feature values
 (the home_* columns if the team last played at home, else the away_*
 columns). Those values populate the fixture's home_*/away_* slots; each
 diff_* feature is recomputed as home - away. Teams with no WC history get
-all-zero features. The fixture's own match_date / venue / competition
-columns are metadata only and are NOT used as model inputs.
+all-zero features. The fixture's own venue / competition columns are metadata
+only and are NOT used as model inputs.
+
+Leakage guard: only feature rows dated strictly before the fixture's
+match_date are eligible (and before --as-of when given). features.joblib holds
+the whole corpus, so without this a retrospective of a finished tournament
+would read each team's state from its LAST tournament match, results of the
+fixture itself included. Pass --as-of 2026-06-11 to freeze every fixture at
+the pre-tournament state.
 """
 
 import argparse
@@ -115,15 +122,19 @@ def _resolve_run_dir(run_id: str | None) -> Path:
     return ARTIFACTS_DIR / latest.read_text().strip()
 
 
-def _team_latest_vector(features: pd.DataFrame, feature_cols: list[str], team: str) -> dict:
+def _team_latest_vector(features: pd.DataFrame, feature_cols: list[str], team: str,
+                        before: pd.Timestamp | None = None) -> dict:
     """
     Return {base_feature_name: value} from the team's most recent match in the
     training feature matrix. Reads home_* columns if the team last played at
     home, else away_* columns. Returns {} for teams with no history.
 
     `features` is chronologically sorted by build_features, so iloc[-1] is the
-    team's latest appearance on each side.
+    team's latest appearance on each side. When `before` is given only rows
+    with match_date < before are considered.
     """
+    if before is not None:
+        features = features[pd.to_datetime(features["match_date"]) < before]
     appearances = []
     home_rows = features[features["home_team"] == team]
     away_rows = features[features["away_team"] == team]
@@ -142,11 +153,58 @@ def _team_latest_vector(features: pd.DataFrame, feature_cols: list[str], team: s
     }
 
 
+def _load_ensemble(run_dir: Path) -> dict | None:
+    """ensemble.json written by ml.pipeline.train_ensemble, if the run has one."""
+    path = run_dir / "ensemble.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def _ensemble_proba(ensemble: dict, run_dir: Path, gbm_proba, fixtures: pd.DataFrame):
+    """
+    Blend GBM with Dixon-Coles and apply the walk-forward calibration.
+    Input/output columns are in model class order (A, D, H).
+    """
+    import numpy as np
+    from ml.models.calibration import _power
+    from ml.models.metrics import from_model_proba, normalize
+
+    dc = joblib.load(run_dir / "dixon_coles.joblib")
+    if "is_neutral_venue" in fixtures.columns:
+        neutral = (fixtures["is_neutral_venue"].astype(str).str.strip().str.lower()
+                   .isin(["true", "1", "1.0", "yes"])).to_numpy()
+    else:
+        neutral = np.ones(len(fixtures), dtype=bool)
+    p_dc = dc.predict_outcome_proba(fixtures["home_team"], fixtures["away_team"], neutral)
+    p_gbm = from_model_proba(np.nan_to_num(np.asarray(gbm_proba, dtype=float)))
+    w = float(ensemble["blend_weight_gbm"])
+    p = normalize(w * p_gbm + (1.0 - w) * p_dc)
+    p = _power(p, float(ensemble.get("temperature", 1.0)), float(ensemble.get("draw_bias", 0.0)))
+    return p[:, [2, 1, 0]]   # back to (A, D, H)
+
+
+def fixture_cutoffs(fixtures: pd.DataFrame, as_of: str | None = None) -> list:
+    """
+    Per-fixture cutoff: the fixture's match_date, capped at as_of. Feature rows
+    on or after the cutoff are never used. None when neither is known.
+    """
+    cap = pd.Timestamp(as_of) if as_of else None
+    dates = (pd.to_datetime(fixtures["match_date"], errors="coerce")
+             if "match_date" in fixtures.columns else pd.Series([pd.NaT] * len(fixtures)))
+    out = []
+    for d in dates:
+        d = None if pd.isna(d) else pd.Timestamp(d)
+        if cap is not None:
+            d = cap if d is None else min(d, cap)
+        out.append(d)
+    return out
+
+
 def _fixture_feature_row(features: pd.DataFrame, feature_cols: list[str],
-                         home_team: str, away_team: str) -> dict:
+                         home_team: str, away_team: str,
+                         before: pd.Timestamp | None = None) -> dict:
     """Assemble one feature row for a fixture from each team's latest form."""
-    home_vec = _team_latest_vector(features, feature_cols, home_team)
-    away_vec = _team_latest_vector(features, feature_cols, away_team)
+    home_vec = _team_latest_vector(features, feature_cols, home_team, before)
+    away_vec = _team_latest_vector(features, feature_cols, away_team, before)
 
     row = {}
     for c in feature_cols:
@@ -166,6 +224,8 @@ def predict_match_outcomes(
     fixtures: pd.DataFrame,
     run_id: str | None = None,
     score_run_id: str | None = None,
+    as_of: str | None = None,
+    include_raw: bool = False,
 ) -> list[dict]:
     """
     Return match-outcome probabilities for each fixture row.
@@ -178,6 +238,10 @@ def predict_match_outcomes(
     p_draw is redistributed onto p_home_win/p_away_win by expected-goals
     share (see _apply_knockout_redistribution), so p_draw is always 0.0 and
     the two win probabilities are effectively advance probabilities.
+
+    include_raw adds p_home_win_raw / p_draw_raw / p_away_win_raw: the model's
+    probabilities before draw calibration and knockout redistribution, so
+    evaluations can report raw and shootout-credited numbers side by side.
     """
     run_dir = _resolve_run_dir(run_id)
 
@@ -186,14 +250,21 @@ def predict_match_outcomes(
     features = joblib.load(run_dir / "features.joblib")
     logger.info(f"Loaded {len(fixtures)} fixtures; predicting with run {run_dir.name}")
 
+    cutoffs = fixture_cutoffs(fixtures, as_of)
     rows = [
-        _fixture_feature_row(features, feature_cols, f.home_team, f.away_team)
-        for f in fixtures.itertuples()
+        _fixture_feature_row(features, feature_cols, f.home_team, f.away_team, cut)
+        for f, cut in zip(fixtures.itertuples(), cutoffs)
     ]
     X = pd.DataFrame(rows, columns=feature_cols).fillna(0.0).astype(float)
 
     proba = model.predict_proba(X)
     classes = list(model.classes_)  # encoded ints, sorted: [0, 1, 2]
+
+    ensemble = _load_ensemble(run_dir)
+    if ensemble is not None:
+        proba = _ensemble_proba(ensemble, run_dir, proba, fixtures)
+        logger.info("Serving ensemble %s (gbm weight %.2f)",
+                    ensemble["variant"], ensemble["blend_weight_gbm"])
 
     if "competition_stage" in fixtures.columns:
         knockout_mask = (
@@ -208,7 +279,7 @@ def predict_match_outcomes(
         # Lazy import: predict_scores imports from this module at load time,
         # so importing it eagerly at module scope would be circular.
         from ml.pipeline.predict_scores import score_fixtures
-        scores = score_fixtures(fixtures, run_id=score_run_id)
+        scores = score_fixtures(fixtures, run_id=score_run_id, as_of=as_of)
         xg_by_row = {i: (s["home_xg"], s["away_xg"]) for i, s in enumerate(scores)}
 
     predictions = []
@@ -221,6 +292,7 @@ def predict_match_outcomes(
         p_home = round(float(pmap.get(TARGET_ENCODE["H"], 0.0)), 4)
         p_draw = round(float(pmap.get(TARGET_ENCODE["D"], 0.0)), 4)
         p_away = round(float(pmap.get(TARGET_ENCODE["A"], 0.0)), 4)
+        raw = (p_home, p_draw, p_away)
 
         # If both teams are unknown (all-zero feature vector) the model has no
         # signal — emit a uniform distribution instead of NaN/degenerate output.
@@ -233,20 +305,28 @@ def predict_match_outcomes(
                 p_home, p_draw, p_away, home_xg, away_xg,
             )
             p_home, p_draw, p_away = round(p_home, 4), round(p_draw, 4), round(p_away, 4)
-        else:
+        elif ensemble is None:
+            # The ensemble is already calibrated on walk-forward folds; the
+            # threshold rule only applies to the plain GBM.
             p_home, p_draw, p_away = _apply_draw_calibration(
                 p_home, p_draw, p_away,
                 DRAW_CALIBRATION_THRESHOLD, DRAW_CALIBRATION_ALPHA,
             )
             p_home, p_draw, p_away = round(p_home, 4), round(p_draw, 4), round(p_away, 4)
 
-        predictions.append({
+        pred = {
             "home_team":  f.home_team,
             "away_team":  f.away_team,
             "p_home_win": p_home,
             "p_draw":     p_draw,
             "p_away_win": p_away,
-        })
+        }
+        if include_raw:
+            if all_zero or sum(raw) == 0.0:
+                raw = (0.333, 0.333, 0.333)
+            pred.update({"p_home_win_raw": raw[0], "p_draw_raw": raw[1],
+                         "p_away_win_raw": raw[2]})
+        predictions.append(pred)
     return predictions
 
 
@@ -270,11 +350,17 @@ def main() -> None:
     parser.add_argument("--score-run-id", default=None,
                         help="Score run ID for knockout-fixture xG redistribution "
                              "(default: latest)")
+    parser.add_argument("--as-of", default=None,
+                        help="Freeze team form at this date (YYYY-MM-DD); rows on/after "
+                             "it are ignored. Use the tournament start for retrospectives.")
+    parser.add_argument("--include-raw", action="store_true",
+                        help="Also emit pre-calibration p_*_raw probabilities")
     args = parser.parse_args()
 
     fixtures = load_fixtures(args.fixtures)
     predictions = predict_match_outcomes(
         fixtures, run_id=args.run_id, score_run_id=args.score_run_id,
+        as_of=args.as_of, include_raw=args.include_raw,
     )
     print(json.dumps(predictions, indent=2))
 
