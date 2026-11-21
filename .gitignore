@@ -44,6 +44,9 @@ data-pipeline/data/raw/
 # Static downloads (football-data.co.uk E0, xg CSVs, etc.) — except team map below
 data-pipeline/data/static/*
 !data-pipeline/data/static/team_map_intl.csv
+# Penalty kick dataset v0 (PEN-02; small, rebuilt by scripts/penalties/01_build_penalty_csv.py)
+!data-pipeline/data/static/penalties/
+!data-pipeline/data/static/penalties/*.csv
 # Example fixtures template (committed; predict.py CLI input)
 !data-pipeline/data/static/examples/
 !data-pipeline/data/static/examples/*.csv
