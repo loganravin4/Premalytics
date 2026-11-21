@@ -1,99 +1,59 @@
-# Premalytics — Soccer Analytics Platform
+# Neutral Ground
 
-A full-stack soccer analytics platform built around **World Cup 2026**, with match outcome prediction, shot-level xG modelling, and a penalties R&D track.
+International football analytics. A match-outcome model trained on ~30,000 international matches priced every
+World Cup 2026 match before a ball was kicked; the site shows that record match by match, misses included, and
+explains how the model works.
 
-> **EPL baseline archived at `archive/epl-2025`.** The default pipeline now targets international / World Cup soccer. See `docs/WC_HANDOFF.md` for the full pivot roadmap.
+> Formerly **Premalytics** (a Premier League project). The EPL baseline is archived at `archive/epl-2025`.
+> The repo and folder still carry the old name until they are renamed.
+
+**Outstanding work lives in [`docs/ROADMAP.md`](docs/ROADMAP.md).** Product and design context: [`PRODUCT.md`](PRODUCT.md).
 
 ---
+
+## Where it stands
+
+| Area | State |
+|------|-------|
+| Match model | Gradient-boosted + logistic, 123 features. WC 2026, leak-free (form frozen at 11 June 2026): 70/104 called (67.3%, shootout-credited, log loss 0.764); strict 66.3%, log loss 0.861. An earlier 72/104 figure leaked in-tournament form and is retracted. |
+| Shot xG | Logistic + GBM on StatsBomb open data; being expanded (ROADMAP XG-05 → XG-07). |
+| Penalties | Not started (ROADMAP PEN-01 → PEN-03). |
+| Backend | Spring Boot; being rebuilt (ROADMAP BE-01 → BE-08). |
+| Frontend | Rebuilt as Neutral Ground on static JSON generated from pipeline outputs. |
 
 ## Stack
 
 | Layer | Tech |
 |-------|------|
-| Frontend | React + TypeScript + Vite + Tailwind + Framer Motion |
+| Frontend | React 19 + TypeScript + Vite + Tailwind v4 |
 | Backend | Spring Boot (Java) |
-| ML pipeline | Python — scikit-learn, XGBoost, pandas |
-| Data pipeline | Python — provider importers, normalisation scripts |
+| ML pipeline | Python: scikit-learn, LightGBM/HistGradientBoosting, pandas |
+| Data pipeline | Python: martj42 international results, FBref via soccerdata, StatsBomb open data |
 | Database | PostgreSQL |
-
----
-
-## ML tracks
-
-| Track | Status | Key files |
-|-------|--------|-----------|
-| 1 — Match outcome predictor | In progress (WC pivot) | `ml/pipeline/`, `ml/features/` |
-| 2 — Shot-level xG | Planned (XG-01 → XG-04) | `ml/models/shot_xg.py` (new) |
-| 3 — Penalties R&D | Planned (PEN-01 → PEN-03) | `ml/models/penalty_*.py` (new) |
-
----
 
 ## Quick start
 
 ```bash
-# Data pipeline
-python data-pipeline/scripts/01_download_match_data.py
-python data-pipeline/scripts/02_normalize_and_export.py
-
-# ML pipeline
+# ML (from repo root, in the data-pipeline venv; see docs/VENV.md)
+python -m pytest ml/tests -q
 python -m ml.pipeline.train
 python -m ml.pipeline.evaluate
-python -m ml.pipeline.predict --fixtures path/to/wc_fixtures.csv
-
-# Tests
-python -m pytest ml/tests -q
+python data-pipeline/scripts/05_evaluate_wc2026.py
 
 # Frontend
-cd frontend && npm install && npm run dev
+cd frontend
+npm install
+npm run data   # regenerate src/data/generated/ from the latest evaluation run
+npm run dev
 ```
-
----
 
 ## Repo layout
 
 ```
-data-pipeline/
-  data/raw/{competition}/{season}/
-  soccer/importers/
-  scripts/
-ml/
-  config.py
-  features/
-  models/
-  pipeline/
-  tests/
-database/
-  schema/
-  migrations/
-backend/
-frontend/
-  src/
-    pages/
-    components/
-docs/
-  WC_HANDOFF.md       ← pivot roadmap + ticket specs
-  WC_SOURCES.md       ← data provider matrix (WC-01)
-  DATA_ASSESSMENT.md  ← EPL data fitness review (ASSESS-01)
-DATA_CONTRACT.md      ← canonical schema (rewrite in WC-02)
+data-pipeline/   ingest, normalization, WC 2026 fixtures/results/evaluation
+ml/              features, models, train/evaluate/predict CLIs, tests
+backend/         Spring Boot API
+frontend/        Neutral Ground web app
+database/        legacy SQL schema (pl_data), being replaced by migrations
+docs/            ROADMAP.md (outstanding work), WC_SPEC.md + WC_HANDOFF.md (pivot history and rules), data contracts
 ```
-
----
-
-## Pivot status
-
-See `docs/WC_HANDOFF.md` for the full ticket breakdown and dependency graph.
-
-| Ticket | Description | Status |
-|--------|-------------|--------|
-| PIVOT-00 | Archive EPL baseline | ✅ Done |
-| WC-00 | Lock epic + conventions | ✅ Done |
-| ASSESS-01 | EPL data fitness review | ⬜ Not started |
-| WC-01 | Source matrix + licenses | ⬜ Not started |
-| WC-02 | Data contract rewrite | ⬜ Not started |
-| WC-03 | Download + normalise scripts | ⬜ Not started |
-| WC-04 | Contract validation tests | ⬜ Not started |
-| WC-05 | Feature builder + leakage tests | ⬜ Not started |
-| WC-06 | Train / eval / predict CLI | ⬜ Not started |
-| WC-07 | National team map + fixture CSV | ⬜ Not started |
-| XG-01 | Shot schema | ⬜ Not started |
-| FE-01 | Wire WC match predictions | ⬜ Not started |
