@@ -1,109 +1,117 @@
 """
-tune_draw_calibration.py — grid search for draw-probability calibration.
+tune_draw_calibration.py — grid search for the draw-probability calibration.
 
-The gradient boosting match-outcome model systematically underweights draw
-probability when one team is a heavy favorite (a known issue with ELO-based
-features). This script grid-searches the threshold/alpha params of
-`_apply_draw_calibration` (ml/pipeline/predict.py) over the WC 2026 holdout
-to find the combination that best corrects for it.
+The gradient boosting match-outcome model underweights the draw when one team
+is a heavy favorite. `_apply_draw_calibration` (ml/pipeline/predict.py) moves
+alpha * (p_favorite - threshold) of the favorite's mass to the draw.
 
-Input:
-    data-pipeline/data/evaluation/wc2026/20260722_004013/predictions_scored.csv
-    (raw p_home_win / p_draw / p_away_win + actual_outcome, one row per match)
+ML-04: the grid now runs on WALK-FORWARD out-of-sample predictions from
+`python -m ml.pipeline.backtest` (every major tournament 2010-2025), never on
+WC 2026. The old version tuned on the WC 2026 holdout it was then scored on.
+
+Two views are printed:
+  * the grid on all pre-2026 folds pooled (what you would ship), and
+  * the nested walk-forward score: each tournament scored with the params
+    tuned only on tournaments that finished before it started. If nested
+    calibration does not beat "no calibration", keep it off.
 
 Usage:
-    python -m ml.pipeline.tune_draw_calibration
+    python -m ml.pipeline.tune_draw_calibration [--backtest-dir DIR] [--model gbm]
 """
 
+import argparse
 import logging
-import math
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-from ml.config import LOG_FORMAT
-from ml.pipeline.predict import _apply_draw_calibration
+from ml.config import ARTIFACTS_DIR, LOG_FORMAT
+from ml.models import metrics as M
+from ml.models.calibration import ThresholdDrawCal, apply_threshold_draw_cal
 
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SCORED_CSV = (
-    PROJECT_ROOT / "data-pipeline" / "data" / "evaluation" / "wc2026"
-    / "20260722_004013" / "predictions_scored.csv"
-)
-
-THRESHOLDS = [0.55, 0.60, 0.65, 0.70, 0.75]
-ALPHAS = [0.30, 0.40, 0.50, 0.60, 0.70]
-
-OUTCOME_COL = {"home": "p_home_win", "draw": "p_draw", "away": "p_away_win"}
+EXCLUDED_FOLDS = {"fifa_world_cup_2026"}
+OUTCOME_IDX = {"home": M.HOME, "draw": M.DRAW, "away": M.AWAY}
 
 
-def _calibrated_metrics(df: pd.DataFrame, threshold: float, alpha: float) -> dict:
-    """Apply calibration to every row and score accuracy + log loss."""
-    correct = 0
-    eps = 1e-15
-    total_ll = 0.0
-
-    for r in df.itertuples():
-        p_home, p_draw, p_away = _apply_draw_calibration(
-            float(r.p_home_win), float(r.p_draw), float(r.p_away_win),
-            threshold, alpha,
-        )
-        trip = {"home": p_home, "draw": p_draw, "away": p_away}
-        pred_outcome = max(trip, key=trip.get)
-        if pred_outcome == r.actual_outcome:
-            correct += 1
-        p_actual = trip[r.actual_outcome]
-        total_ll += -math.log(max(p_actual, eps))
-
-    n = len(df)
-    return {
-        "threshold": threshold,
-        "alpha": alpha,
-        "accuracy": correct / n,
-        "log_loss": total_ll / n,
-        "correct": correct,
-        "total": n,
-    }
+def latest_backtest_dir() -> Path:
+    runs = sorted(p for p in ARTIFACTS_DIR.glob("backtest_*") if (p / "predictions.csv").exists())
+    if not runs:
+        raise FileNotFoundError("No backtest found. Run: python -m ml.pipeline.backtest")
+    return runs[-1]
 
 
-def run_grid_search(df: pd.DataFrame) -> tuple[list[dict], dict]:
-    """Return (all grid results, best result) sorted by log loss then accuracy."""
-    results = [
-        _calibrated_metrics(df, threshold, alpha)
-        for threshold in THRESHOLDS
-        for alpha in ALPHAS
-    ]
-    best = min(results, key=lambda r: (r["log_loss"], -r["accuracy"]))
-    return results, best
+def load_oos(backtest_dir: Path, model: str) -> pd.DataFrame:
+    df = pd.read_csv(backtest_dir / "predictions.csv")
+    df = df[(df["model"] == model) & ~df["fold"].isin(EXCLUDED_FOLDS)].copy()
+    df["match_date"] = pd.to_datetime(df["match_date"])
+    df["y"] = df["outcome"].map(OUTCOME_IDX)
+    return df
 
 
-def print_grid(results: list[dict], best: dict) -> None:
-    header = f"{'threshold':>9}  {'alpha':>5}  {'accuracy':>8}  {'log_loss':>8}"
-    print(header)
-    print("-" * len(header))
-    for r in results:
-        marker = "  <- best" if r is best else ""
-        print(f"{r['threshold']:>9.2f}  {r['alpha']:>5.2f}  "
-              f"{r['accuracy']:>8.4f}  {r['log_loss']:>8.4f}{marker}")
+def grid(p: np.ndarray, y: np.ndarray) -> list[dict]:
+    rows = []
+    for t in ThresholdDrawCal.THRESHOLDS:
+        for a in ThresholdDrawCal.ALPHAS:
+            q = apply_threshold_draw_cal(p, t, a)
+            rows.append({"threshold": t, "alpha": a, "log_loss": M.log_loss(q, y),
+                         "rps": M.rps(q, y), "accuracy": M.accuracy(q, y),
+                         "draw_recall": M.draw_recall(q, y)})
+    return rows
+
+
+def nested(df: pd.DataFrame) -> dict:
+    """Score each fold with params tuned on folds that ended before it began."""
+    spans = df.groupby("fold")["match_date"].agg(["min", "max"]).sort_values("min")
+    ps, ys, ps0 = [], [], []
+    for fold, (start, _) in spans.iterrows():
+        prior = spans.index[spans["max"] < start]
+        if len(prior) == 0 or bool(df.loc[df["fold"] == fold, "warmup"].iloc[0]):
+            continue
+        tr = df[df["fold"].isin(prior)]
+        te = df[df["fold"] == fold]
+        cal = ThresholdDrawCal().fit(tr[["p_home", "p_draw", "p_away"]].to_numpy(),
+                                     tr["y"].to_numpy())
+        p = te[["p_home", "p_draw", "p_away"]].to_numpy()
+        ps.append(cal.transform(p))
+        ps0.append(p)
+        ys.append(te["y"].to_numpy())
+    p, p0, y = np.vstack(ps), np.vstack(ps0), np.concatenate(ys)
+    return {"n": len(y), "none": M.score(p0, y), "nested": M.score(p, y)}
 
 
 def main() -> None:
-    if not SCORED_CSV.exists():
-        raise FileNotFoundError(f"Scored predictions not found: {SCORED_CSV}")
-    df = pd.read_csv(SCORED_CSV)
+    ap = argparse.ArgumentParser(description="Tune draw calibration on walk-forward folds")
+    ap.add_argument("--backtest-dir", default=None)
+    ap.add_argument("--model", default="gbm")
+    args = ap.parse_args()
 
-    baseline = _calibrated_metrics(df, threshold=1.01, alpha=0.0)  # no-op calibration
-    logger.info("Baseline (no calibration): accuracy=%.4f log_loss=%.4f",
-                baseline["accuracy"], baseline["log_loss"])
+    bdir = Path(args.backtest_dir) if args.backtest_dir else latest_backtest_dir()
+    df = load_oos(bdir, args.model)
+    logger.info("Using %s (%s): %d OOS matches, %d folds (WC 2026 excluded)",
+                bdir.name, args.model, len(df), df["fold"].nunique())
 
-    results, best = run_grid_search(df)
-    print_grid(results, best)
-    logger.info(
-        "Best combination: threshold=%.2f alpha=%.2f -> accuracy=%.4f log_loss=%.4f",
-        best["threshold"], best["alpha"], best["accuracy"], best["log_loss"],
-    )
+    p = df[["p_home", "p_draw", "p_away"]].to_numpy()
+    y = df["y"].to_numpy()
+    rows = grid(p, y)
+    best = min(rows, key=lambda r: (r["log_loss"], r["rps"]))
+    print(f"{'threshold':>9}  {'alpha':>5}  {'log_loss':>8}  {'rps':>7}  {'acc':>6}  {'draw_rec':>8}")
+    for r in rows:
+        mark = "  <- best" if r is best else ""
+        print(f"{r['threshold']:>9.2f}  {r['alpha']:>5.2f}  {r['log_loss']:>8.4f}  "
+              f"{r['rps']:>7.4f}  {r['accuracy']:>6.3f}  {r['draw_recall']:>8.3f}{mark}")
+
+    nest = nested(df)
+    print(f"\nNested walk-forward over {nest['n']} reported matches:")
+    for k in ("none", "nested"):
+        m = nest[k]
+        print(f"  {k:>6}: log_loss={m['log_loss']:.4f}  rps={m['rps']:.4f}  "
+              f"acc={m['accuracy']:.3f}  draw_recall={m['draw_recall']:.3f}")
+    logger.info("Pooled best: threshold=%.2f alpha=%.2f (1.01 / 0.0 = off)",
+                best["threshold"], best["alpha"])
 
 
 if __name__ == "__main__":
