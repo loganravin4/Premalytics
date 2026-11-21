@@ -1,8 +1,4 @@
-# ml-serve runtime, on top of ml/requirements.txt (pandas, scikit-learn come from there).
-# joblib and xgboost are needed to unpickle the current match model but are not listed in
-# ml/requirements.txt, so they are pinned here to the versions in data-pipeline/venv.
-joblib==1.5.2
-xgboost==3.3.0
+# ml-serve runtime, on top of ml/requirements.txt
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 # FastAPI TestClient, used by ml/tests/test_serve.py

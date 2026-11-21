@@ -1,195 +1,80 @@
-# Premalytics ML Pipeline
+# Neutral Ground ML pipeline
 
-End-to-end EPL match outcome prediction with honest, leakage-free evaluation.
+Match outcome, shot xG, and penalty models for international football, evaluated without leakage.
+Results and decisions: [`docs/ML_EXPERIMENTS.md`](../docs/ML_EXPERIMENTS.md) (match model),
+[`docs/XG_MODEL.md`](../docs/XG_MODEL.md) (shot xG), [`docs/PENALTY_LIMITATIONS.md`](../docs/PENALTY_LIMITATIONS.md) (penalties).
 
-## Quick Start
+## Setup
 
-```bash
-# From the repo root — all commands run in the data-pipeline venv
-cd premalytics
-
-# 1. Download and normalize match data (if not already done)
-python data-pipeline/scripts/01_download_match_data.py
-python data-pipeline/scripts/02_normalize_and_export.py
-
-# 2. Run tests
-python -m pytest ml/tests/ -v
-
-# 3. Train models
-python -m ml.pipeline.train
-
-# 4. Evaluate on holdout (2024-2025 season)
-python -m ml.pipeline.evaluate
-
-# 5. Predict upcoming fixtures
-python -m ml.pipeline.predict --fixtures fixtures.csv
-```
-
-## Prerequisites
-
-The ML pipeline reads directly from normalized CSVs — **no PostgreSQL required**.
+Everything runs from the repo root in the `data-pipeline/venv` Python 3.12 venv (see `docs/VENV.md`). No database is needed.
 
 ```bash
-# Canonical venv: Python 3.12 at data-pipeline/venv (see docs/VENV.md)
 py -3.12 -m venv data-pipeline/venv
 data-pipeline/venv/Scripts/pip install -r requirements.txt -r ml/requirements.txt
-
-# Activate (Windows)
-.\data-pipeline\venv\Scripts\Activate.ps1
-
-# Or install ML deps only into an existing venv
-pip install -r ml/requirements.txt
-
-# Optional: faster gradient boosting
-pip install lightgbm
+python -m pytest ml/tests -q
 ```
 
-## Data Splits (Chronological)
+## Match model
 
-| Split | Seasons | Rows (~) | Purpose |
-|-------|---------|----------|---------|
-| Train | 2021-22, 2022-23 | 1,520 | Model fitting |
-| Validation | 2023-24 | 760 | Hyperparameter tuning |
-| **Holdout** | **2024-25** | **760** | **Final honest evaluation** |
+The served model is a blend: 0.2 × gradient-boosted classifier + 0.8 × Dixon-Coles score model, then temperature scaling.
+Blend weight and temperature are fit only on tournaments that finished before the prediction cutoff.
 
-The holdout set is never touched during training decisions.
+```bash
+python -m ml.pipeline.train            # GBM + logistic on everything before TRAIN_CUTOFF_DATE (ml/config.py)
+python -m ml.pipeline.backtest         # walk-forward over every major tournament since 2014 (~9 min)
+python -m ml.pipeline.train_ensemble --run-id <run> --variant blend_temp   # attach the blend to a run
+python -m ml.pipeline.predict --fixtures data-pipeline/data/wc2026_full_fixtures.csv --as-of 2026-06-11 --include-raw
+python data-pipeline/scripts/05_evaluate_wc2026.py
+```
 
-## Feature Engineering
+- **Splits are by date, never random.** Training stops at `TRAIN_CUTOFF_DATE` (11 June 2026, the WC 2026 opener).
+- **`--as-of`** freezes every team's form at that date; use the tournament start for retrospectives, or knockout fixtures read form from earlier rounds.
+- **Fixtures CSV:** `match_date,home_team,away_team,is_neutral_venue,competition_id,competition_stage`, teams as three-letter codes from `data-pipeline/data/static/team_map_intl.csv` (see `data-pipeline/data/static/examples/wc_fixtures.csv`).
+- **Output:** JSON on stdout, one object per fixture with `p_home_win`, `p_draw`, `p_away_win` (plus raw columns with `--include-raw`).
 
-All features are computed strictly from matches BEFORE the target match date.
-Rolling windows: last 3, 5, and 10 matches per team.
+### Features (GBM)
 
-**Per-team rolling features (home and away perspective):**
-- `form_pts_{N}` — points per game (W=3, D=1, L=0) in last N matches
-- `form_win_{N}` — win rate in last N matches
-- `gf_avg_{N}` — goals for average
-- `ga_avg_{N}` — goals against average
-- `xgf_avg_{N}` — expected goals for average
-- `xga_avg_{N}` — expected goals against average
-- `shots_avg_{N}` — shots taken average
-- `shots_ag_avg_{N}` — shots conceded average
-- `sot_avg_{N}` — shots on target average
-- `corners_avg_{N}` — corners average
-- `at_home_win_rate_5` — win rate in last 5 home-venue matches
-- `at_away_win_rate_5` — win rate in last 5 away-venue matches
-- `rest_days` — days since last match
-- `season_pts_rate` — cumulative points / games played this season
+123 columns per fixture, all from matches strictly before it: Elo and its gap, rolling form over 3/5/10 matches (points, wins, goals, xG, shots, shots on target, corners, possession, passing), head-to-head over the last five meetings, rest days, confederation, and neutral venue. `ml/tests/test_features.py` checks for leakage.
 
-**Head-to-head (last 3 and 5 meetings):**
-- `h2h_win_{3,5}` — win rate in recent head-to-head meetings
+### Metrics
 
-**ELO ratings (pre-match, carries across seasons):**
-- `elo` — team ELO before this match (starts at 1500, K=20)
-  - Formula: `E = 1/(1+10^((opp_elo − team_elo)/400))`, `new_elo = elo + K*(actual − E)`, actual: W=1, D=0.5, L=0
-  - Same-day matches use start-of-day ELOs — no intra-day ordering dependency
+Ranked probability score (primary), log loss, Brier, accuracy, draw recall, and per-class reliability. Knockouts are reported two ways, always side by side: **raw** (a shootout counts as a draw) and **shootout-credited** (draw mass split between the teams, shootout winner scored as the result).
 
-**Opponent-relative differentials (home − away, post-pivot):**
-- `diff_elo` — ELO delta (primary strength signal)
-- `diff_form_pts_{3,5,10}` — points-per-game form differential
-- `diff_form_win_5` — win-rate differential
-- `diff_gf_avg_5`, `diff_ga_avg_5` — goal-scoring/conceding differential
-- `diff_xgf_avg_5`, `diff_xga_avg_5` — xG differential (when available)
-- `diff_season_pts_rate` — season points-rate differential
+## Shot xG
 
-**Total features:** 90 (home_ + away_ rolling/ELO + diff_ differentials)
+```bash
+python data-pipeline/scripts/shots/01_export_statsbomb_shots.py   # all StatsBomb open international shots
+python -m ml.pipeline.train_shots
+python -m ml.pipeline.evaluate_shots
+python -m ml.pipeline.export_xg_grid                               # ml/exports/xg_grid.json for the frontend
+python -m ml.pipeline.predict_shot --distance 12 --angle 35 --body-part right_foot
+```
 
-## Models
+## Penalties
 
-| Model | Notes |
-|-------|-------|
-| `naive_baseline` | Always predicts training-set class priors. Floor to beat. |
-| `logistic_baseline` | Multinomial logistic regression with median imputation + scaling. |
-| `gradient_boost` | `HistGradientBoostingClassifier` (or LightGBM if installed). Native NaN handling. |
+```bash
+python data-pipeline/scripts/penalties/01_build_penalty_csv.py
+python -m ml.pipeline.evaluate_penalties                           # ml/exports/penalty_aggregates.json
+```
+
+Descriptive only: no pre-kick predictor beats the overall conversion rate.
 
 ## Artifacts
 
-Artifacts are saved under `ml/artifacts/{run_id}/`:
+Gitignored, under `ml/artifacts/`. `latest_run.txt` and `latest_shot_run.txt` name the runs that `predict`, `predict_shot`, and `ml/serve` load.
 
 ```
 ml/artifacts/
-└── 20240501_143022/          ← run_id (timestamp)
-    ├── naive_baseline.pkl
-    ├── logistic_baseline.pkl
-    ├── gradient_boost.pkl
-    ├── feature_cols.json      ← ordered feature list
-    ├── feature_importance.csv ← for gradient_boost
-    ├── cv_results.json        ← walk-forward CV metrics
-    ├── validation_metrics.json
-    ├── holdout_metrics.json   ← written by evaluate.py
-    └── run_meta.json
+├── <match run>/          gradient_boosting.joblib, logistic_regression.joblib, features.joblib, feature_cols.json,
+│                         metrics.json, and after train_ensemble: ensemble.json, dixon_coles.joblib, reliability.json
+├── backtest_<timestamp>/ metrics.json, predictions.csv, reliability.json, summary.md
+└── shot_xg_<timestamp>/  shot models and evaluation output
 ```
 
-## Predict Upcoming Fixtures
+## Serving
 
-Create a CSV with upcoming matches:
+`ml/serve/` is a FastAPI app that loads the latest runs once at startup; the Spring backend calls it. See `backend/README.md`.
 
-```csv
-match_date,home_team,away_team
-2025-05-10,Arsenal,Chelsea
-2025-05-10,Liverpool,Manchester City
-```
+## Open work
 
-Team names must match the canonical names in `DATA_CONTRACT.md`
-(e.g., `Manchester City`, `Nott'ham Forest`, `Newcastle Utd`).
-
-```bash
-python -m ml.pipeline.predict --fixtures upcoming.csv --output predictions.csv
-```
-
-Output:
-```
-match_date   home_team         away_team           prob_H  prob_D  prob_A  predicted
-2025-05-10   Arsenal           Chelsea             0.4521  0.2610  0.2869  H
-2025-05-10   Liverpool         Manchester City     0.3890  0.2714  0.3396  H
-```
-
-## Evaluation Metrics
-
-- **Accuracy** — fraction of correct outcome predictions
-- **Log loss** — proper scoring rule; penalizes overconfident wrong predictions
-- **Brier score** — quadratic scoring rule per class (H/D/A)
-- **Calibration MAE** — how closely predicted probabilities match empirical frequencies
-
-Typical baselines for EPL:
-| Model | Accuracy | Log Loss |
-|-------|----------|----------|
-| Naive (home-win always) | ~0.46 | ~1.0 |
-| Logistic regression | ~0.53 | ~0.95 |
-| Gradient boosting | ~0.55 | ~0.91 |
-| Betting market implied | ~0.58 | ~0.86 |
-
-## Walk-forward backtest (ML-01 → ML-05)
-
-```bash
-python -m ml.pipeline.backtest            # every major tournament 2014-2026
-python -m ml.pipeline.train_ensemble      # attach GBM + Dixon-Coles blend to the latest run
-```
-
-Writes `ml/artifacts/backtest_<timestamp>/` (`metrics.json`, `predictions.csv`,
-`reliability.json`, `summary.md`). Results and the served-model decision are in
-`docs/ML_EXPERIMENTS.md`. For retrospectives, run `predict.py --as-of <tournament start>`
-so no fixture reads form from matches on or after that date.
-
-## Running Tests
-
-```bash
-# All tests
-python -m pytest ml/tests/ -v
-
-# Only leakage tests
-python -m pytest ml/tests/test_features.py::TestNoLeakage -v
-
-# Only data contract tests
-python -m pytest ml/tests/test_validation.py -v
-```
-
-## Next Improvements
-
-Prioritized by expected lift:
-
-1. **Hyperparameter tuning** — Optuna on walk-forward CV; ~+1% accuracy
-2. **xG coverage** — FBRef xG is available for all seasons in raw/; enrich 2023-24+
-3. **Draw specialization** — draws are the hardest class (recall=0); dedicated binary classifier
-4. **Player availability** — key players injured/suspended; requires manual data
-5. **Ensemble** — blend logistic + boosting probabilities; ~+0.5% accuracy
-6. **Betting market features** — closing odds are strong priors (if available)
+Tracked in [`docs/ROADMAP.md`](../docs/ROADMAP.md): feature ablation (ML-06), tournament simulator (ML-07), confidence intervals (ML-08), and deduplicating the 18 tournament matches that appear in both FBref and martj42 with home/away swapped (`ml/features/loader.py`).
