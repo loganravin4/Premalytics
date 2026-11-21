@@ -15,7 +15,7 @@ explains how the model works.
 
 | Area | State |
 |------|-------|
-| Match model | Gradient-boosted + logistic, 123 features. WC 2026, leak-free (form frozen at 11 June 2026): 70/104 called (67.3%, shootout-credited, log loss 0.764); strict 66.3%, log loss 0.861. An earlier 72/104 figure leaked in-tournament form and is retracted. |
+| Match model | Served: 0.2 × gradient-boosted + 0.8 × Dixon-Coles, temperature 0.90. Walk-forward over 27 tournaments: RPS 0.1802 vs 0.1854 for an Elo baseline (`docs/ML_EXPERIMENTS.md`). WC 2026, leak-free: 68/104 (shootout-credited, log loss 0.732); strict 65.4%, log loss 0.815. An earlier 72/104 figure leaked in-tournament form and is retracted. |
 | Shot xG | Logistic + GBM on StatsBomb open data; being expanded (ROADMAP XG-05 → XG-07). |
 | Penalties | Not started (ROADMAP PEN-01 → PEN-03). |
 | Backend | Spring Boot; being rebuilt (ROADMAP BE-01 → BE-08). |
@@ -27,7 +27,7 @@ explains how the model works.
 |-------|------|
 | Frontend | React 19 + TypeScript + Vite + Tailwind v4 |
 | Backend | Spring Boot (Java) |
-| ML pipeline | Python: scikit-learn, LightGBM/HistGradientBoosting, pandas |
+| ML pipeline | Python: scikit-learn, HistGradientBoosting, Dixon-Coles (scipy), pandas |
 | Data pipeline | Python: martj42 international results, FBref via soccerdata, StatsBomb open data |
 | Database | PostgreSQL |
 

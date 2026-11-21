@@ -99,8 +99,8 @@ export function Home() {
           </p>
           <p className="mt-4 max-w-[52ch] text-ink-2">
             Log loss {summary.logLoss.toFixed(3)} with knockout ties credited to the shootout winner. Scored strictly,
-            with a draw as its own outcome, the model managed {pct(summary.raw.gbm.accuracy, 1)} and{' '}
-            {summary.raw.gbm.log_loss.toFixed(3)}. {summary.byStage.final.correct ? 'It called the final.' : 'It missed the final.'}
+            with a draw as its own outcome, the model managed {pct(summary.raw.strict.accuracy, 1)} and{' '}
+            {summary.raw.strict.log_loss.toFixed(3)}. {summary.byStage.final.correct ? 'It called the final.' : 'It missed the final.'}
           </p>
         </div>
         <div className="lg:pt-4">
@@ -180,8 +180,8 @@ export function Home() {
           className="group flex items-center justify-between border-y-2 border-rule-strong py-6 no-underline hover:bg-paper-2"
         >
           <span className="prose-col text-xl">
-            A gradient-boosted model trained on {summary.raw.nTrain.toLocaleString('en-US')} international matches,{' '}
-            {summary.raw.nFeatures} features per fixture.
+            A score model blended with a gradient-boosted model, trained on{' '}
+            {summary.raw.nTrain.toLocaleString('en-US')} international matches and tested on 27 earlier tournaments.
           </span>
           <ArrowRight aria-hidden className="mr-2 size-6 shrink-0 text-spot transition-transform group-hover:translate-x-1" />
         </Link>

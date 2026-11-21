@@ -17,7 +17,7 @@ Last updated: 2026-11-21.
 | Area | State | Evidence |
 |------|-------|----------|
 | Match outcome model (Track 1) | Shipped. GBM + logistic on a 30,417-match international corpus, 123 features (Elo, rolling form, xG, confederation, H2H). | `ml/artifacts/20260722_002607/metrics.json` |
-| WC 2026 retrospective | Leak-free rerun (form frozen at 11 June 2026): 70/104 (67.3%), log loss 0.764 shootout-credited; strict 66.3%, log loss 0.861. The earlier 72/104 / 0.681 run leaked in-tournament form (found in ML-01, fixed on branch `claude/ml-match-upgrade-7ac86f`). | `data-pipeline/data/evaluation/wc2026/20261121_144113/` |
+| WC 2026 retrospective | Served blend, leak-free: 68/104, log loss 0.732 shootout-credited; strict 65.4%, 0.815. Previous GBM leak-free: 70/104, 0.764 / 0.861. The earlier 72/104 / 0.681 run leaked in-tournament form (found and fixed in ML-01, PR #14). | `data-pipeline/data/evaluation/wc2026/20261121_144554/` |
 | Score model | Home/away goal regressors on xG + Elo + confederation features. | `ml/artifacts/score_20260721_231448/` |
 | Shot xG (Track 2) | Shipped but thin: 1,624 training shots (WC 2018 only) and 1,417 eval shots, 5 features. Logistic (Brier 0.0870, LL 0.300) beats GBM (Brier 0.0872, LL 0.329). | `ml/artifacts/shot_xg_20260628_010155/shot_metrics.json` |
 | Penalties (Track 3) | **Not started.** PEN-01 → PEN-03 in `WC_HANDOFF.md` never ran. | — |
@@ -31,7 +31,7 @@ Last updated: 2026-11-21.
    an underdog. The model almost never picks a draw, so every draw is a miss.
 2. **Tiny, flattering holdout.** 104 matches is one tournament. The credited log loss (0.764) redistributes knockout
    draw probability to the two teams, which is not comparable to the raw 0.861. Report both, always.
-3. **No external benchmark.** ML-01 since found the GBM does no better than a 2-feature Elo logistic; no free closing-odds source exists.
+3. **No external benchmark.** ML-01 found the GBM does no better than a 2-feature Elo logistic; the served blend now beats it by a small margin. No free closing-odds source exists.
 4. **xG trained on one tournament.** Train set smaller than eval set; GBM overfits; no freeze-frame features.
 
 ---
@@ -58,14 +58,14 @@ Rules from `WC_SPEC.md` hold: chronological splits only, `shift(1)` on every rol
 
 | Ticket | Scope | Done when |
 |--------|-------|-----------|
-| ML-01 Walk-forward backtest | Replace the single 104-match holdout with rolling-origin evaluation across every major tournament 2014–2026 (WC, Euro, Copa, AFCON, Asian Cup, Gold Cup). Train on everything before each tournament's first match; score that tournament. | `python -m ml.pipeline.backtest` writes per-tournament and pooled metrics JSON. Several hundred to ~1,000 scored matches. |
-| ML-02 Proper metrics | Add **Ranked Probability Score** (the standard for ordered W/D/L), Brier, reliability bins, and always report raw and shootout-credited numbers side by side. | Metrics JSON has `rps`, `brier`, `log_loss_raw`, `log_loss_shootout_credited`, `reliability`. |
-| ML-03 Baselines to beat | Elo-only logistic, FIFA-rank-only logistic, "always home/favorite", and (if a free closing-odds source exists for international matches) market-implied probabilities. | Backtest table shows the GBM vs every baseline. A model that does not beat Elo-only is reported as such. |
-| ML-04 Draw modeling | Derive W/D/L from a **Dixon-Coles** bivariate Poisson score model (low-score correlation term ρ) and/or an ordinal logistic model, then stack with the GBM. Re-tune `tune_draw_calibration.py` on walk-forward folds, not on WC 2026. | Draw recall and RPS improve on the backtest without worsening log loss. |
-| ML-05 Calibration | Temperature scaling or isotonic per fold; reliability diagram data exported for the frontend. | Calibration error reported per decile; `reliability.json` artifact. |
+| ML-01 Walk-forward backtest ✅ Done (PR #14) | Replace the single 104-match holdout with rolling-origin evaluation across every major tournament 2014–2026 (WC, Euro, Copa, AFCON, Asian Cup, Gold Cup). Train on everything before each tournament's first match; score that tournament. | `python -m ml.pipeline.backtest` writes per-tournament and pooled metrics JSON. Several hundred to ~1,000 scored matches. |
+| ML-02 Proper metrics ✅ Done (PR #14) | Add **Ranked Probability Score** (the standard for ordered W/D/L), Brier, reliability bins, and always report raw and shootout-credited numbers side by side. | Metrics JSON has `rps`, `brier`, `log_loss_raw`, `log_loss_shootout_credited`, `reliability`. |
+| ML-03 Baselines to beat ✅ Done (PR #14) | Elo-only logistic, FIFA-rank-only logistic, "always home/favorite", and (if a free closing-odds source exists for international matches) market-implied probabilities. | Backtest table shows the GBM vs every baseline. A model that does not beat Elo-only is reported as such. |
+| ML-04 Draw modeling ✅ Done (PR #14) | Derive W/D/L from a **Dixon-Coles** bivariate Poisson score model (low-score correlation term ρ) and/or an ordinal logistic model, then stack with the GBM. Re-tune `tune_draw_calibration.py` on walk-forward folds, not on WC 2026. | Draw recall and RPS improve on the backtest without worsening log loss. |
+| ML-05 Calibration ✅ Done (PR #14) | Temperature scaling or isotonic per fold; reliability diagram data exported for the frontend. | Calibration error reported per decile; `reliability.json` artifact. |
 | ML-06 Feature ablation | Ablate xG, confederation, H2H, rest days, travel distance, and an `is_knockout` flag. `is_knockout` depends on fixing martj42 stage inference (`04_normalize_martj42.py` `stage_for()` labels every non-friendly/qualifier match as `group`). Keep that fix as its own ticket. | Ablation table in `docs/ML_EXPERIMENTS.md`; only features with measured lift stay. |
 | ML-07 Tournament simulator | Monte Carlo of a full tournament bracket from match probabilities (group tables with tiebreakers, R32 → final). | `python -m ml.pipeline.simulate --tournament wc2026` emits each team's probability of reaching each round. Feeds a frontend page. |
-| ML-08 Uncertainty | Bootstrap confidence intervals on every headline accuracy/log-loss number. | Report and frontend show "67% (95% CI a–b)". |
+| ML-08 Uncertainty | Bootstrap confidence intervals on every headline accuracy/log-loss number. | Report and frontend show "65% (95% CI a–b)". |
 
 ### Track 2: shot xG (the second model)
 

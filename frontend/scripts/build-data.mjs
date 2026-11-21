@@ -130,7 +130,7 @@ const summary = {
   raw: {
     nTrain: modelMetrics?.n_train ?? 30417,
     nFeatures: modelMetrics?.n_features ?? 123,
-    gbm: { accuracy: evalMetrics.accuracy_raw, log_loss: evalMetrics.log_loss_raw },
+    strict: { accuracy: evalMetrics.accuracy_raw, log_loss: evalMetrics.log_loss_raw },
     rps: evalMetrics.rps,
   },
 };
