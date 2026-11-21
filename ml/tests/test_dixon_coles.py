@@ -59,7 +59,8 @@ def test_fitted_predictions_sum_to_one_and_rank_teams(fitted):
     p = dc.predict_outcome_proba(["T11", "T0", "T5", "UNSEEN"], ["T0", "T11", "T6", "T3"],
                                  [True, True, False, False])
     np.testing.assert_allclose(p.sum(axis=1), 1.0)
-    assert p[0, 0] > p[0, 2]          # strongest beats weakest
+    # T11 is the strongest team, T0 the weakest
+    assert p[0, 0] > p[0, 2]
     assert p[1, 2] > p[1, 0]
     assert dc.home_adv_ > 0
     assert -0.25 <= dc.rho_ <= 0.25

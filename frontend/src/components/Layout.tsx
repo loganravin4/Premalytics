@@ -24,7 +24,7 @@ function ThemeToggle() {
     try {
       localStorage.setItem('ng-theme', theme);
     } catch {
-      /* storage unavailable: theme still applies for this visit */
+      // Storage can be blocked (private mode); the theme still applies for this visit
     }
   }, [theme]);
   const Icon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor;

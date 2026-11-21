@@ -47,8 +47,6 @@ function Segmented<T extends string>({
   );
 }
 
-/* ---------- Groups ---------- */
-
 function standings(codes: string[], ms: Match[]) {
   return codes
     .map((code) => {
@@ -153,8 +151,6 @@ function GroupsView() {
   );
 }
 
-/* ---------- Knockouts ---------- */
-
 const ROUNDS: Stage[] = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'];
 
 /** Orders each round so every match sits beside the two matches that fed it. */
@@ -241,8 +237,6 @@ function KnockoutsView() {
     </div>
   );
 }
-
-/* ---------- All matches ---------- */
 
 type CallFilter = 'any' | 'called' | 'missed';
 

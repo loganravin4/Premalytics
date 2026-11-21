@@ -1,5 +1,4 @@
-// Walk-forward backtest results from docs/ML_EXPERIMENTS.md (run backtest_20261121_144436).
-// The run's artifacts are gitignored, so these are copied by hand; update them when the backtest is rerun.
+// Copied from docs/ML_EXPERIMENTS.md because backtest artifacts are gitignored; update when the backtest reruns
 
 export interface BacktestRow {
   label: string;

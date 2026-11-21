@@ -1,6 +1,5 @@
 package com.neutralground.web;
 
-/** Paging limits shared by list endpoints. */
 final class ApiPaging {
 
     static final String DEFAULT_SIZE = "50";

@@ -1,22 +1,6 @@
-"""
-Scoreline prediction CLI.
+"""Predict each fixture's expected goals and most likely exact scoreline from the latest score run.
 
-Predicts expected goals (lambda) for each team in a fixture using the two
-Poisson models from the latest score run, then reports the single most likely
-exact scoreline under the joint Poisson PMF.
-
-Per-fixture features are assembled the same way as ml.pipeline.predict: each
-team's most recent appearance in the saved feature matrix supplies its rolling
-form (goals, xG, ELO, confederation).
-
-Usage:
-    python -m ml.pipeline.predict_scores --fixtures path/to/fixtures.csv
-
-Output (stdout JSON array), one object per fixture:
-    {"home_team": "ESP", "away_team": "ARG",
-     "predicted_home_goals": 1, "predicted_away_goals": 1,
-     "most_likely_score": "1-1", "p_score": 0.087,
-     "home_xg": 1.42, "away_xg": 1.18}
+Usage: python -m ml.pipeline.predict_scores --fixtures fixtures.csv
 """
 
 import argparse
@@ -54,8 +38,6 @@ def _resolve_score_run(run_id: str | None = None) -> Path:
 def _fixture_score_row(features: pd.DataFrame, prefixed_cols: list[str],
                        home_team: str, away_team: str, is_neutral: float,
                        before: pd.Timestamp | None = None) -> dict:
-    """Assemble one score-model feature row from each team's latest form
-    (rows dated on/after `before` are ignored, see predict.fixture_cutoffs)."""
     home_vec = _team_latest_vector(features, prefixed_cols, home_team, before)
     away_vec = _team_latest_vector(features, prefixed_cols, away_team, before)
 
@@ -79,7 +61,6 @@ def _fixture_score_row(features: pd.DataFrame, prefixed_cols: list[str],
 
 def score_fixtures(fixtures: pd.DataFrame, run_id: str | None = None,
                    as_of: str | None = None) -> list[dict]:
-    """Return scoreline predictions (list of dicts) for each fixture row."""
     run_dir = _resolve_score_run(run_id)
     meta = json.loads((run_dir / "score_feature_cols.json").read_text())
     use_xg = bool(meta.get("use_xg", True))
@@ -95,6 +76,7 @@ def score_fixtures(fixtures: pd.DataFrame, run_id: str | None = None,
 
     neutral = (fixtures["is_neutral_venue"] if "is_neutral_venue" in fixtures.columns
                else pd.Series([True] * len(fixtures)))
+    # Same leakage cutoff as match predictions: no feature rows on or after the fixture date.
     cutoffs = fixture_cutoffs(fixtures, as_of)
     rows = [
         _fixture_score_row(features, prefixed_cols, f.home_team, f.away_team,

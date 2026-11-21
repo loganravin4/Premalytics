@@ -18,11 +18,7 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 
-/**
- * Per-client token bucket on POST /api/**. Reads are cached and stay unlimited; POSTs reach the
- * inference service, so they are the expensive path. Keyed on the remote address: behind a proxy,
- * set server.forward-headers-strategy so that address is the real client.
- */
+/** Limits only POSTs, which hit the inference service; keyed on remote address, so set forward-headers-strategy behind a proxy. */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 

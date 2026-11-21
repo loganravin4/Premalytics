@@ -1,14 +1,4 @@
-"""
-=============================================================================
-Tests: DATA_CONTRACT.md validation (ml.features.loader.validate_data_contract)
-=============================================================================
-
-Covers:
-  - DataFrames without competition_id (legacy no-competition validation path)
-  - International fixture from ml/tests/fixtures/intl_match_logs_sample.csv
-    (FIFA codes, dual-row, competition_id — produced by WC-03 ingest)
-=============================================================================
-"""
+"""DATA_CONTRACT.md validation on a synthetic no-competition frame and a committed WC 2022 international sample."""
 
 from pathlib import Path
 
@@ -23,13 +13,7 @@ FIXTURE_PATH = Path(__file__).parent / "fixtures" / "intl_match_logs_sample.csv"
 
 
 def _minimal_valid_df(n: int = 10) -> pd.DataFrame:
-    """
-    Build a tiny synthetic DataFrame (no competition_id) that passes validate_data_contract.
-
-    Uses FIFA codes as team_id and omits competition_id to exercise the legacy
-    no-competition validation branch; cycles W/D/L results with matching goals
-    so result/goals consistency checks pass.
-    """
+    """BRA rows without competition_id, so validation takes the legacy no-competition branch."""
     dates = pd.date_range("2021-08-14", periods=n, freq="7D")
     cycle = ["W", "D", "L"]
     results = [cycle[i % 3] for i in range(n)]
@@ -62,7 +46,6 @@ def _minimal_valid_df(n: int = 10) -> pd.DataFrame:
 
 
 def _load_intl_fixture() -> pd.DataFrame:
-    """Load committed international CSV; parse dates for contract checks."""
     assert FIXTURE_PATH.exists(), f"Missing fixture: {FIXTURE_PATH}"
     df = pd.read_csv(FIXTURE_PATH)
     df["match_date"] = pd.to_datetime(df["match_date"])
@@ -70,7 +53,6 @@ def _load_intl_fixture() -> pd.DataFrame:
 
 
 class TestContractPasses:
-    """Happy-path cases — validation should return passed=True."""
 
     def test_valid_df_passes(self):
         df = _minimal_valid_df()

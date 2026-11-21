@@ -1,13 +1,3 @@
-"""
-Baseline models for EPL match outcome prediction.
-
-  1. NaiveBaseline:       Outputs constant class priors from training data.
-  2. LogisticBaseline:    Multinomial logistic regression with imputation + scaling.
-
-Both implement the same interface as sklearn estimators so they can be
-dropped into the same evaluation loop.
-"""
-
 import logging
 import numpy as np
 import pandas as pd
@@ -23,11 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class NaiveBaseline(BaseEstimator, ClassifierMixin):
-    """
-    Predicts the training-set class distribution for every test sample.
-
-    This is the floor every other model must beat.
-    """
+    """Predicts the training-set class priors for every row: the floor every model must beat."""
 
     def __init__(self):
         self.class_priors_ = None
@@ -44,7 +30,6 @@ class NaiveBaseline(BaseEstimator, ClassifierMixin):
         return self
 
     def predict(self, X):
-        # Always predict the most frequent class
         majority = self.classes_[np.argmax(self.class_priors_)]
         return np.full(len(X), majority)
 
@@ -55,14 +40,10 @@ class NaiveBaseline(BaseEstimator, ClassifierMixin):
 
 
 def make_logistic_pipeline(C: float = 1.0, max_iter: int = 2000) -> Pipeline:
-    """
-    Multinomial logistic regression with NaN imputation and feature scaling.
-
-    Uses median imputation for missing values (common for early-season rolling
-    features and NULL xG). StandardScaler ensures convergence.
-    """
     return Pipeline([
+        # Early rolling windows and missing xG leave NaNs.
         ("imputer", SimpleImputer(strategy="median")),
+        # lbfgs doesn't converge on unscaled features.
         ("scaler",  StandardScaler()),
         ("clf",     LogisticRegression(
             solver="lbfgs",

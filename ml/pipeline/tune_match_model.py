@@ -1,19 +1,6 @@
-"""
-Hyperparameter tuning for the XGBoost match-outcome model (PHASE 3).
+"""Optuna search for the XGBoost match model's params; writes best_xgb_params.json for make_best_boosting_pipeline.
 
-Optuna search over XGBClassifier params, scored by mean multi-class log loss
-across a 5-fold TimeSeriesSplit (temporal order respected — no shuffling, each
-fold validates on a strictly later slice than it trains on).
-
-The search runs on the TRAINING window only (matches before TRAIN_CUTOFF_DATE),
-using the same feature matrix and per-competition sample weights as
-ml.pipeline.train, so the tuned model transfers cleanly.
-
-Outputs:
-    ml/artifacts/best_xgb_params.json   (consumed by make_best_boosting_pipeline)
-
-Usage:
-    python -m ml.pipeline.tune_match_model [--n-trials 100]
+Usage: python -m ml.pipeline.tune_match_model [--n-trials 100]
 """
 
 import argparse
@@ -34,11 +21,11 @@ from ml.pipeline.train import (
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
-LABELS = sorted(TARGET_ENCODE.values())   # [0, 1, 2]
+LABELS = sorted(TARGET_ENCODE.values())
 N_SPLITS = 5
 BEST_PARAMS_PATH = ARTIFACTS_DIR / "best_xgb_params.json"
 
-# Fixed params that are not searched (kept identical to the production model).
+# Kept identical to the production model so tuned params transfer.
 FIXED_PARAMS = {
     "eval_metric": "mlogloss",
     "random_state": RANDOM_SEED,
@@ -65,6 +52,7 @@ def make_objective(X, y, w):
     X = X.to_numpy() if hasattr(X, "to_numpy") else np.asarray(X)
     y = np.asarray(y)
     w = np.asarray(w)
+    # Time-ordered folds: each validates on a strictly later slice than it trains on.
     tscv = TimeSeriesSplit(n_splits=N_SPLITS)
 
     def objective(trial: optuna.Trial) -> float:
@@ -95,12 +83,13 @@ def main() -> None:
     logger.info("Loading features and building the training window ...")
     features = load_wc_features()
     feature_cols = select_feature_columns(features)
+    # Tune on the training window only, never on the eval matches.
     train_df, _ = split_train_eval(features)
     X, y, w = build_xy(train_df, feature_cols)
     logger.info("Tuning on %d training rows, %d features, %d-fold TimeSeriesSplit",
                 len(X), len(feature_cols), N_SPLITS)
 
-    optuna.logging.set_verbosity(optuna.logging.WARNING)   # suppress verbose logs
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
     sampler = optuna.samplers.TPESampler(seed=RANDOM_SEED)
     study = optuna.create_study(direction="minimize", sampler=sampler)
     study.set_user_attr("n_trials", args.n_trials)

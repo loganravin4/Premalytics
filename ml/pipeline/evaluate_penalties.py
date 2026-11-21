@@ -1,23 +1,6 @@
-"""
-Penalty audit, baselines, and frontend aggregates (PEN-01 / PEN-03).
+"""Penalty audit, rolling-origin evaluation of pre-kick predictors, and frontend aggregates.
 
-1. Audit: kick counts by tournament, phase and gender; field coverage.
-2. Rolling-origin evaluation of the pre-kick predictors (penalty_baselines):
-   tournaments are ordered by start date and each one is scored by models
-   trained only on tournaments that started before it. Scoring starts once
-   at least MIN_TRAIN_KICKS kicks are available. Also reports the fixed
-   holdout (tournaments starting on/after PENALTY_EVAL_START_DATE).
-   A predictor "beats the baseline" only if its pooled log loss is lower than
-   the constant rate AND the match-clustered bootstrap 95% interval of the
-   difference is entirely below zero.
-3. Descriptive aggregates (zone grid, foot x side, shootout order, pressure,
-   keeper action) for the frontend penalties lab, men's and all scopes.
-
-Writes ml/artifacts/penalties_{ts}/penalty_metrics.json and
-penalty_aggregates.json, and copies the aggregates to ml/exports/.
-
-Usage:
-    python -m ml.pipeline.evaluate_penalties
+Usage: python -m ml.pipeline.evaluate_penalties
 """
 
 import json
@@ -60,10 +43,6 @@ def scores(y, p) -> dict:
             "log_loss": round(float(log_loss(y, p, labels=[0, 1])), 5)}
 
 
-# ---------------------------------------------------------------------------
-# Audit
-# ---------------------------------------------------------------------------
-
 def audit(df: pd.DataFrame) -> dict:
     by_t = (df.groupby(["tournament", "tournament_start_date", "competition_gender", "phase"])
               .size().unstack("phase", fill_value=0).reset_index()
@@ -96,18 +75,11 @@ def audit(df: pd.DataFrame) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Rolling-origin evaluation
-# ---------------------------------------------------------------------------
-
 def rolling_origin_predictions(df: pd.DataFrame, min_train: int = MIN_TRAIN_KICKS) -> pd.DataFrame:
-    """
-    One prediction per kick from models trained only on earlier tournaments.
-    Returns the scored kicks with a p_<name> column per predictor.
-    """
     starts = (df.groupby("tournament")["tournament_start_date"].first().sort_values())
     scored = []
     for tour, start in starts.items():
+        # Train only on tournaments that started earlier, so no kick is scored by a model that saw it.
         train = df[df["tournament_start_date"] < start]
         test = df[df["tournament"] == tour]
         if len(train) < min_train or train["label"].nunique() < 2:
@@ -141,6 +113,7 @@ def evaluate_predictors(scored: pd.DataFrame) -> dict:
             continue
         diff = paired_bootstrap_diff(scored, scored[f"p_{n}"].to_numpy(),
                                      scored["p_constant"].to_numpy())
+        # Counts as beating the baseline only if the whole clustered-bootstrap 95% CI is below zero.
         diff["beats_constant"] = bool(diff["log_loss_diff_ci95"][1] < 0)
         vs_constant[n] = diff
     return {
@@ -150,10 +123,6 @@ def evaluate_predictors(scored: pd.DataFrame) -> dict:
         "vs_constant": vs_constant,
     }
 
-
-# ---------------------------------------------------------------------------
-# Aggregates for the frontend
-# ---------------------------------------------------------------------------
 
 def aggregates_for(df: pd.DataFrame) -> dict:
     n = len(df)
@@ -176,9 +145,7 @@ def aggregates_for(df: pd.DataFrame) -> dict:
         "shootout_order": conversion_table(so, ["order_bucket"]),
         "shootout_pressure": conversion_table(so, ["shootout_pressure"]),
         "in_game_state": conversion_table(ig, ["game_state"]),
-        # keeper_technique is left out on purpose: StatsBomb records no keeper
-        # action for most misses and "standing" mostly on center goals, so its
-        # conversion just restates the outcome. It stays in the audit only.
+        # keeper_technique is omitted: StatsBomb's keeper action mostly restates the outcome.
         "shootouts": shootout_summary(df),
     }
 

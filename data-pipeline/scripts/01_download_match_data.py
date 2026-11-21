@@ -1,22 +1,6 @@
-"""
-=============================================================================
-PREMALYTICS PIPELINE — STEP 1: DOWNLOAD INTERNATIONAL MATCH DATA
-=============================================================================
+"""Step 01: cache FBref international schedules under .soccerdata/ via soccerdata; step 02 normalizes them.
 
-WHAT THIS SCRIPT DOES:
-  1. Configures soccerdata to cache under {repo}/.soccerdata/
-  2. Calls FBref via soccerdata (Selenium + Chrome when cache is cold)
-  3. Stores schedule HTML for each competition/season in the cache
-  4. Does NOT write match_logs_normalized.csv — that is step 02
-
-REQUIREMENTS:
-  - Python 3.12 venv at data-pipeline/venv (see docs/VENV.md)
-  - soccerdata >= 1.9 (older versions get FBref 403)
-  - Google Chrome installed for live scrapes
-
-NEXT STEP:
-  python data-pipeline/scripts/02_normalize_and_export.py
-=============================================================================
+Needs soccerdata >= 1.9 (older versions get FBref 403) and Chrome for live scrapes.
 """
 
 from __future__ import annotations
@@ -26,12 +10,11 @@ import logging
 import sys
 from pathlib import Path
 
-# Resolve paths relative to this file so the script works from any cwd
-SCRIPT_DIR = Path(__file__).resolve().parent          # .../data-pipeline/scripts/
-PIPELINE_DIR = SCRIPT_DIR.parent                      # .../data-pipeline/
-PROJECT_ROOT = PIPELINE_DIR.parent                    # .../premalytics/
+SCRIPT_DIR = Path(__file__).resolve().parent
+PIPELINE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = PIPELINE_DIR.parent
 
-# Allow `from soccer.importers import ...` without installing the package
+# soccer/ isn't an installed package
 if str(PIPELINE_DIR) not in sys.path:
     sys.path.insert(0, str(PIPELINE_DIR))
 
@@ -74,11 +57,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Empty list from argparse → download all competitions in COMPETITIONS
     comp_ids = args.competition or None
 
     print()
-    print("PREMALYTICS STEP 1: DOWNLOAD INTERNATIONAL MATCH DATA")
+    print("NEUTRAL GROUND STEP 1: DOWNLOAD INTERNATIONAL MATCH DATA")
     print("Source: soccerdata → FBref")
     print(f"Cache:  {PROJECT_ROOT / '.soccerdata'}")
     print(f"Comps:  {comp_ids or list(COMPETITIONS.keys())}")
@@ -111,7 +93,6 @@ def main() -> None:
     print("Next step:")
     print("  python data-pipeline/scripts/02_normalize_and_export.py")
 
-    # Non-zero exit if any competition failed (for CI / shell chaining)
     if ok < len(results):
         sys.exit(1)
 

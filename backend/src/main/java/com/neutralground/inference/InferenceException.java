@@ -1,9 +1,6 @@
 package com.neutralground.inference;
 
-/**
- * The inference service failed. unavailable=true means it could not be reached, timed out, or
- * returned 5xx (HTTP 503 to our caller); false means it rejected the input (HTTP 422).
- */
+/** unavailable=true means unreachable, timed out, or 5xx (we answer 503); false means it rejected the input (422). */
 public class InferenceException extends RuntimeException {
 
     private final boolean unavailable;

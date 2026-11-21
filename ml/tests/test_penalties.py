@@ -1,8 +1,4 @@
-"""
-Tests for the penalty dataset builder (zone mapping, shootout state, pre-kick
-context) and the penalty baselines / evaluation (no post-kick features,
-rolling origin trains only on earlier tournaments).
-"""
+"""Penalty builder (zones, shootout state, pre-kick context) and baselines (no post-kick features, rolling origin)."""
 
 import importlib.util
 from pathlib import Path
@@ -29,13 +25,11 @@ def b():
     return mod
 
 
-# ---------------------------------------------------------------------------
-# Zone mapping
-# ---------------------------------------------------------------------------
 
 class TestZoneMapping:
     @pytest.mark.parametrize("y,z,zone", [
-        (37.0, 0.3, "low_left"),      # taker's left = smaller y
+        # The taker's left is smaller y
+        (37.0, 0.3, "low_left"),
         (40.0, 0.3, "low_center"),
         (43.0, 0.3, "low_right"),
         (37.0, 1.2, "mid_left"),
@@ -53,8 +47,8 @@ class TestZoneMapping:
         assert b.placement_row(0.89) == "mid"
 
     def test_misses_map_to_nearest_edge_zone(self, b):
-        assert b.placement_zone(33.0, 0.5) == "low_left"     # wide of the left post
-        assert b.placement_zone(40.0, 3.5) == "high_center"  # over the bar
+        assert b.placement_zone(33.0, 0.5) == "low_left"
+        assert b.placement_zone(40.0, 3.5) == "high_center"
         assert b.is_on_target(33.0, 0.5) is False
         assert b.is_on_target(40.0, 3.5) is False
         assert b.is_on_target(40.0, 1.0) is True
@@ -78,24 +72,23 @@ class TestZoneMapping:
         assert b.foot_side(foot, col) == side
 
 
-# ---------------------------------------------------------------------------
-# Shootout state
-# ---------------------------------------------------------------------------
 
 class TestShootoutState:
     def test_decided_in_regulation(self, b):
-        assert b.shootout_decided(3, 3, 0, 3) == "a"     # B can reach at most 2
+        # B can reach at most 2
+        assert b.shootout_decided(3, 3, 0, 3) == "a"
         assert b.shootout_decided(3, 4, 2, 4) is None
         assert b.shootout_decided(4, 5, 3, 5) == "a"
 
     def test_sudden_death(self, b):
         assert b.shootout_decided(6, 6, 5, 6) == "a"
-        assert b.shootout_decided(6, 6, 5, 5) is None    # B still to kick
+        # B still has a kick to take
+        assert b.shootout_decided(6, 6, 5, 5) is None
 
     def test_pressure_euro2020_final(self, b):
         # Italy 3-2 England after four kicks each.
-        assert b.shootout_pressure(3, 4, 2, 4) == "can_win"     # Jorginho
-        assert b.shootout_pressure(2, 4, 3, 5) == "must_score"  # Saka
+        assert b.shootout_pressure(3, 4, 2, 4) == "can_win"
+        assert b.shootout_pressure(2, 4, 3, 5) == "must_score"
         assert b.shootout_pressure(0, 0, 0, 0) == "neutral"
 
     def test_sudden_death_first_kicker_is_neutral(self, b):
@@ -104,9 +97,6 @@ class TestShootoutState:
         assert b.shootout_pressure(5, 5, 5, 6) == "can_win"
 
 
-# ---------------------------------------------------------------------------
-# Builder: pre-kick context comes from earlier events only
-# ---------------------------------------------------------------------------
 
 def _shot(i, team, period, minute, ptype, outcome, foot="Right Foot", end=(120, 37.0, 0.5)):
     return {"id": f"e{i}", "index": i, "period": period, "minute": minute,
@@ -121,8 +111,9 @@ class TestKicksFromMatch:
             _shot(1, "A", 1, 10, "Open Play", "Goal"),
             {"id": "e2", "index": 2, "period": 1, "minute": 20, "type": {"name": "Own Goal For"},
              "team": {"name": "B"}},
-            _shot(3, "B", 2, 70, "Penalty", "Saved"),               # in-game, level 1-1
-            _shot(4, "A", 5, 120, "Penalty", "Goal"),               # shootout kick 1
+            # In-game, with the score level at 1-1
+            _shot(3, "B", 2, 70, "Penalty", "Saved"),
+            _shot(4, "A", 5, 120, "Penalty", "Goal"),
             _shot(5, "B", 5, 120, "Penalty", "Off T", end=(120, 33.0, 0.4)),
             _shot(6, "A", 5, 120, "Penalty", "Goal", foot="Left Foot", end=(120, 43.0, 2.0)),
         ]
@@ -150,9 +141,6 @@ class TestKicksFromMatch:
         assert b.SOURCE == "statsbomb_open"
 
 
-# ---------------------------------------------------------------------------
-# Baselines and evaluation
-# ---------------------------------------------------------------------------
 
 def _synth_kicks(seed: int = 0) -> pd.DataFrame:
     rng = np.random.RandomState(seed)
@@ -197,7 +185,8 @@ class TestBaselines:
         df = pd.DataFrame({"g": ["a"] * 2 + ["b"] * 98, "label": [1, 1] + [0] * 49 + [1] * 49})
         m = GroupRate(["g"], "x", k=20).fit(df)
         p_a = m.predict(pd.DataFrame({"g": ["a"]}))[0]
-        assert m.p0_ < p_a < 1.0                    # pulled well below the raw 100%
+        # Shrinkage pulls a 2-for-2 group well below the raw 100%
+        assert m.p0_ < p_a < 1.0
         assert m.predict(pd.DataFrame({"g": ["zzz"]}))[0] == pytest.approx(m.p0_)
 
     @pytest.mark.parametrize("pred", make_predictors(), ids=lambda p: p.name)

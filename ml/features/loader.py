@@ -1,11 +1,6 @@
 """
-Load and validate match data from normalized CSVs.
-
-All ML features are derived from match_logs_normalized.csv files produced
-by data-pipeline/scripts/02_normalize_and_export.py.
-
-The loader also attempts to enrich xG values from FBRef raw CSVs when
-the Understat/Kaggle xG source is unavailable (common for 2023-24+).
+Loads and validates dual-row match data from the normalized CSVs.
+Handles the flat WC layout, the legacy nested EPL layout, and the flat martj42 supplement.
 """
 
 import json
@@ -20,20 +15,18 @@ from ml.config import DATA_DIR, COMPETITIONS_TRAIN, ARTIFACTS_DIR
 
 logger = logging.getLogger(__name__)
 
-# Expected columns and their types after loading
 REQUIRED_COLS = [
     "match_id", "season_id", "team_id", "opponent_id",
     "match_date", "venue", "goals_for", "goals_against", "result",
 ]
 
-# International contract (WC pivot) — present on new CSVs, absent on legacy EPL files.
-# validate_data_contract() auto-detects international data when competition_id exists.
+# Present on international CSVs, absent on legacy EPL files.
 INTL_COLS = [
-    "competition_id",       # e.g. fifa_world_cup
-    "competition_stage",    # group | knockout | final | qualifier | friendly
-    "is_neutral_venue",     # bool — most WC/Euro matches are neutral-site
-    "sample_weight",        # training weight (friendlies down-weighted in ingest)
-    "source",               # provenance: fbref, football_data_api, etc.
+    "competition_id",
+    "competition_stage",
+    "is_neutral_venue",
+    "sample_weight",
+    "source",
 ]
 
 NUMERIC_COLS = [
@@ -49,26 +42,12 @@ NUMERIC_COLS = [
 VALID_RESULTS  = {"W", "D", "L"}
 VALID_VENUES   = {"Home", "Away"}
 
-# martj42/international_results supplement (see data-pipeline/scripts/04_normalize_martj42.py).
-# Unlike FBref data this lives at a flat path, not under {competition_id}/{season_id}/.
+# Unlike FBref data this sits at a flat path, not under {competition_id}/{season_id}/.
 MARTJ42_FILE = DATA_DIR / "martj42" / "match_logs_normalized.csv"
 
 
-# ---------------------------------------------------------------------------
-# FBRef xG supplement
-# ---------------------------------------------------------------------------
-
 def _load_fbref_xg(data_dir: Path, seasons: list[str]) -> dict:
-    """
-    Build a lookup {(match_date, team_canonical, opponent_canonical): (xg_for, xg_against)}
-    from FBRef match log CSVs.
-
-    FBRef CSVs live at: data/raw/{season}/{TeamName}/match_logs_{timestamp}.csv
-    They have real xG values and use FBRef team IDs in opponent_id.
-    We key by (date, team_folder_name, opponent_name_in_csv) which we then
-    reconcile with canonical team names via the TEAM_NAME_MAP below.
-    """
-    # Map FBRef CSV opponent field → canonical name used in normalized CSVs
+    """Builds {(date, team, opponent): (xg_for, xg_against)} from raw FBRef match logs."""
     FBREF_TO_CANONICAL = {
         "Nott'ham Forest": "Nott'ham Forest",
         "Newcastle Utd":   "Newcastle Utd",
@@ -85,8 +64,7 @@ def _load_fbref_xg(data_dir: Path, seasons: list[str]) -> dict:
         "Luton Town":      "Luton Town",
     }
 
-    # Map FBRef folder names (Title-Case with hyphens) → canonical names.
-    # Add an entry here whenever a new team folder appears that lacks xG coverage.
+    # Folders missing here are skipped, so add one to give that team xG coverage.
     FOLDER_TO_CANONICAL = {
         "Arsenal": "Arsenal",
         "Aston-Villa": "Aston Villa",
@@ -133,12 +111,9 @@ def _load_fbref_xg(data_dir: Path, seasons: list[str]) -> dict:
                 continue
             canonical_team = FOLDER_TO_CANONICAL.get(team_dir.name)
             if canonical_team is None:
-                # Slugified or unrecognised dir — skip.
-                # Add the folder name to FOLDER_TO_CANONICAL above to enable it.
                 continue
 
-            # Exclude match_logs_normalized.csv: it has no xG and sorts last alphabetically,
-            # causing fbref_files[-1] to silently pick the wrong file.
+            # The normalized CSV has no xG and sorts last, so it would otherwise win as the latest file.
             fbref_files = sorted(
                 f for f in team_dir.glob("match_logs_*.csv")
                 if f.name != "match_logs_normalized.csv"
@@ -148,8 +123,7 @@ def _load_fbref_xg(data_dir: Path, seasons: list[str]) -> dict:
 
             attempted_teams += 1
 
-            # Among available FBRef CSVs, pick the one with the most non-null xg_for rows.
-            # Older scrapes (2025-10-19) consistently have xG; newer ones (2026-03-16) may not.
+            # Most xG wins: older scrapes (2025-10-19) have it, newer ones (2026-03-16) may not.
             best_df = None
             for f in fbref_files:
                 try:
@@ -200,54 +174,21 @@ def _load_fbref_xg(data_dir: Path, seasons: list[str]) -> dict:
     return lookup
 
 
-# ---------------------------------------------------------------------------
-# Layout detection
-# ---------------------------------------------------------------------------
-
 def _detect_layout(entry_dir: Path) -> str:
-    """
-    Inspect a top-level data directory and decide which on-disk layout it uses.
-
-    WC layout (flat) — CSV sits directly under the year directory:
-        {entry}/{year}/match_logs_normalized.csv
-        e.g. data/raw/fifa_world_cup/2018/match_logs_normalized.csv
-
-    EPL layout (nested) — CSV sits under a team subdirectory:
-        {entry}/{child}/{TeamName}/match_logs_normalized.csv
-
-    Returns "wc" or "epl". Defaults to "wc" when nothing is found (the empty
-    case is handled by the caller, which raises on zero loaded rows).
-    """
+    """Returns "wc" for flat {entry}/{year}/ CSVs or "epl" for nested {entry}/{child}/{team}/ CSVs."""
     for child in sorted(entry_dir.iterdir()):
         if not child.is_dir():
             continue
-        # WC: the normalized CSV lives directly inside this child (a year dir).
         if (child / "match_logs_normalized.csv").exists():
             return "wc"
-        # EPL: the normalized CSV lives one level deeper, under team subdirs.
         for team_dir in child.iterdir():
             if team_dir.is_dir() and (team_dir / "match_logs_normalized.csv").exists():
                 return "epl"
+    # Nothing found is fine here: the caller raises on zero loaded rows.
     return "wc"
 
 
-# ---------------------------------------------------------------------------
-# Primary loader
-# ---------------------------------------------------------------------------
-
 def load_martj42_matches(path: Path = MARTJ42_FILE) -> pd.DataFrame:
-    """
-    Load the martj42/international_results normalized supplement.
-
-    This file is produced by data-pipeline/scripts/04_normalize_martj42.py and
-    already conforms to DATA_CONTRACT.md (dual-row, FIFA codes, Home/Away venue,
-    neutrality in is_neutral_venue). Unlike the FBref competition data it sits at
-    a single flat path rather than under {competition_id}/{season_id}/.
-
-    Returns a contract-conforming DataFrame (match_date parsed to datetime).
-    Raises FileNotFoundError if the file is absent, or ValueError if it violates
-    the data contract.
-    """
     if not path.exists():
         raise FileNotFoundError(
             f"martj42 supplement not found: {path}. "
@@ -257,7 +198,6 @@ def load_martj42_matches(path: Path = MARTJ42_FILE) -> pd.DataFrame:
     df = pd.read_csv(path, low_memory=False)
     df["match_date"] = pd.to_datetime(df["match_date"], errors="coerce")
 
-    # Fail loud if the supplement does not satisfy the contract.
     validate_data_contract(df)
 
     logger.info("martj42 supplement: %d rows (%d matches) from %s",
@@ -275,30 +215,7 @@ def load_raw_matches(
     enrich_xg: bool = True,
     include_martj42: bool = True,
 ) -> pd.DataFrame:
-    """
-    Load all normalized match CSVs and return a combined DataFrame.
-
-    One row per team per match (dual-row format). The caller is responsible
-    for pivoting to single-row-per-match format for model training.
-
-    Two on-disk layouts are auto-detected per top-level directory (see
-    _detect_layout): the flat WC layout ({competition}/{year}/CSV) and the
-    nested EPL layout ({season}/{year}/{team}/CSV). FBRef xG enrichment only
-    applies to the EPL layout — WC CSVs carry xG inline.
-
-    Args:
-        seasons:   Top-level dirs to load — WC competition ids (e.g.
-                   "fifa_world_cup") or EPL season ids (default: COMPETITIONS_TRAIN).
-        data_dir:  Root of the raw data directory.
-        enrich_xg: If True, fill NULL xg_for/xg_against from FBRef CSVs (EPL only).
-        include_martj42: If True (default), append the martj42/international_results
-                   supplement (data/raw/martj42/match_logs_normalized.csv) to the
-                   FBref competition data, expanding the corpus to 10,000+ matches.
-                   Silently skipped (with a warning) if the file is absent.
-
-    Returns:
-        DataFrame with standardized dtypes and validated rows.
-    """
+    """Loads every normalized CSV plus the martj42 supplement as one dual-row frame."""
     if seasons is None:
         seasons = COMPETITIONS_TRAIN
 
@@ -324,12 +241,10 @@ def load_raw_matches(
             if not child.is_dir():
                 continue
             if layout == "wc":
-                # Flat: {entry}/{year}/match_logs_normalized.csv
                 csv_path = child / "match_logs_normalized.csv"
                 if csv_path.exists():
                     _read_csv(csv_path)
             else:
-                # Nested EPL: {entry}/{child}/{team}/match_logs_normalized.csv
                 for team_dir in sorted(child.iterdir()):
                     if not team_dir.is_dir():
                         continue
@@ -345,8 +260,7 @@ def load_raw_matches(
 
     df = _clean_and_validate(df)
 
-    # FBRef xG enrichment is EPL-specific (hardcoded club folder maps). On WC
-    # data it only yields an empty lookup and misleading warnings, so skip it.
+    # Enrichment uses hardcoded EPL club maps; on WC data it only yields misleading warnings.
     if not enrich_xg:
         pass
     elif "epl" in layouts:
@@ -361,17 +275,13 @@ def load_raw_matches(
             "xG sourced from normalized CSV directly"
         )
 
-    # Append the martj42 supplement after FBref-specific xG enrichment (martj42
-    # rows carry no xG and must not pass through the FBref club-name lookup).
+    # After enrichment: martj42 rows carry no xG and must not hit the FBref club-name lookup.
     if include_martj42:
         if MARTJ42_FILE.exists():
             martj = load_martj42_matches(MARTJ42_FILE)
             before = len(df)
             df = pd.concat([df, martj], ignore_index=True)
-            # Collapse any exact (match_id, team_id) collisions between sources
-            # (e.g. a WC/Euro fixture present in both FBref and martj42 under the
-            # same home/away designation). FBref rows sort first, so their richer
-            # xG/shot detail is the one kept.
+            # FBref rows come first, so a fixture in both sources keeps FBref's richer xG/shot detail.
             df = df.drop_duplicates(subset=["match_id", "team_id"], keep="first")
             df = df.sort_values(["match_date", "match_id", "team_id"]).reset_index(drop=True)
             logger.info(
@@ -389,13 +299,8 @@ def load_raw_matches(
 
 
 def _clean_and_validate(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Standardize dtypes, drop invalid rows, and validate data contract.
-    """
-    # Parse dates
     df["match_date"] = pd.to_datetime(df["match_date"], errors="coerce")
 
-    # Drop rows missing required fields
     before = len(df)
     df = df.dropna(subset=["match_id", "season_id", "team_id", "opponent_id",
                             "match_date", "venue", "result"])
@@ -405,18 +310,15 @@ def _clean_and_validate(df: pd.DataFrame) -> pd.DataFrame:
     if dropped:
         logger.warning(f"Dropped {dropped} rows with missing/invalid required fields")
 
-    # Cast numeric columns
     for col in NUMERIC_COLS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Validate non-negative goals
     invalid_goals = df[(df["goals_for"] < 0) | (df["goals_against"] < 0)]
     if len(invalid_goals):
         logger.warning(f"Found {len(invalid_goals)} rows with negative goals — dropping")
         df = df[~((df["goals_for"] < 0) | (df["goals_against"] < 0))]
 
-    # Validate result consistency
     result_consistent = (
         ((df["result"] == "W") & (df["goals_for"] > df["goals_against"])) |
         ((df["result"] == "D") & (df["goals_for"] == df["goals_against"])) |
@@ -427,13 +329,12 @@ def _clean_and_validate(df: pd.DataFrame) -> pd.DataFrame:
         logger.warning(f"Dropped {bad_results.sum()} rows with inconsistent result/goals")
         df = df[result_consistent]
 
-    # Deduplicate (same CSV loaded from multiple paths in some cases)
+    # The same CSV can be reached through more than one path.
     before = len(df)
     df = df.drop_duplicates(subset=["match_id", "team_id"])
     if len(df) < before:
         logger.info(f"Removed {before - len(df)} duplicate (match_id, team_id) rows")
 
-    # Sort chronologically
     df = df.sort_values(["match_date", "match_id", "team_id"]).reset_index(drop=True)
 
     _log_data_quality(df)
@@ -441,7 +342,6 @@ def _clean_and_validate(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _fill_xg_from_lookup(df: pd.DataFrame, lookup: dict) -> pd.DataFrame:
-    """Fill NULL xg_for/xg_against from FBRef lookup without overwriting existing values."""
     date_str = df["match_date"].dt.strftime("%Y-%m-%d")
     filled = 0
     attempted = 0
@@ -453,8 +353,9 @@ def _fill_xg_from_lookup(df: pd.DataFrame, lookup: dict) -> pd.DataFrame:
     for i in df.index:
         need_xgf = pd.isna(xgf[i])
         need_xga = pd.isna(xga[i])
+        # Never overwrite xG that's already populated.
         if not need_xgf and not need_xga:
-            continue  # both already populated — never overwrite
+            continue
         attempted += 1
         key = (date_str[i], df.at[i, "team_id"], df.at[i, "opponent_id"])
         val = lookup.get(key)
@@ -481,7 +382,6 @@ def _fill_xg_from_lookup(df: pd.DataFrame, lookup: dict) -> pd.DataFrame:
 
 
 def _log_data_quality(df: pd.DataFrame) -> None:
-    """Log a concise data quality summary (pre-enrichment)."""
     total = len(df)
     logger.info(f"Data quality summary ({total} rows):")
     for season, grp in df.groupby("season_id"):
@@ -497,11 +397,6 @@ def _log_data_quality(df: pd.DataFrame) -> None:
 
 
 def _log_xg_coverage(df: pd.DataFrame) -> dict:
-    """
-    Log per-season xG coverage after enrichment and persist a JSON artifact.
-
-    Returns a dict keyed by season_id with coverage metrics.
-    """
     coverage: dict = {}
     logger.info("[xG] Post-enrichment coverage by season:")
     for season, grp in df.groupby("season_id"):
@@ -541,23 +436,10 @@ def _log_xg_coverage(df: pd.DataFrame) -> dict:
 
 
 def validate_data_contract(df: pd.DataFrame) -> dict:
-    """
-    Run DATA_CONTRACT.md checks and return a summary dict.
-
-    Supports two shapes:
-      - International (WC pivot): competition_id column, FIFA team_id codes
-      - Legacy EPL: club names as team_id, ~38 matches per team per season
-
-    Raises ValueError if critical checks fail (missing columns, bad codes, etc.).
-    Warnings (sparse seasons, high NULL xG) do not fail validation.
-
-    Returns:
-        dict with keys: passed, total_rows, warnings, errors
-    """
+    """Raises ValueError on DATA_CONTRACT.md violations; sparse seasons and NULL-heavy columns only warn."""
     errors   = []
     warnings = []
 
-    # --- 1. Required columns (same for EPL and international) ---
     for col in REQUIRED_COLS:
         if col not in df.columns:
             errors.append(f"Missing required column: {col!r}")
@@ -565,10 +447,8 @@ def validate_data_contract(df: pd.DataFrame) -> dict:
     if errors:
         raise ValueError(f"Data contract violations: {errors}")
 
-    # --- 2. Row counts — different expectations per data shape ---
     is_intl = "competition_id" in df.columns
     if is_intl:
-        # Each match_id should appear exactly twice (home row + away row)
         for (comp, season), grp in df.groupby(["competition_id", "season_id"]):
             n_matches = grp["match_id"].nunique()
             n_rows = len(grp)
@@ -578,14 +458,13 @@ def validate_data_contract(df: pd.DataFrame) -> dict:
                     f"{comp}/{season}: {n_rows} rows but expected {expected} "
                     f"({n_matches} matches × 2)"
                 )
-        # International team_id must be FIFA 3-letter codes (BRA, ENG, …)
         bad_codes = df[
             ~df["team_id"].astype(str).str.fullmatch(r"[A-Z]{3}", na=False)
         ]
         if len(bad_codes):
             errors.append(f"{len(bad_codes)} rows with non-FIFA team_id codes")
     else:
-        # EPL: ~20 teams × 38 matches ≈ 760 rows per season (dual-row)
+        # An EPL team plays 38 matches a season.
         for season, grp in df.groupby("season_id"):
             n_teams = grp["team_id"].nunique()
             n_rows = len(grp)
@@ -596,17 +475,14 @@ def validate_data_contract(df: pd.DataFrame) -> dict:
                     f"(expected ~{expected})"
                 )
 
-    # 3. Duplicate match-team combinations
     dupes = df.duplicated(subset=["match_id", "team_id"]).sum()
     if dupes:
         errors.append(f"{dupes} duplicate (match_id, team_id) combinations")
 
-    # 4. Impossible values
     neg_goals = (df["goals_for"] < 0).sum() + (df["goals_against"] < 0).sum()
     if neg_goals:
         errors.append(f"{neg_goals} rows with negative goals")
 
-    # 5. Invalid result/venue
     bad_result = (~df["result"].isin(VALID_RESULTS)).sum()
     bad_venue  = (~df["venue"].isin(VALID_VENUES)).sum()
     if bad_result:
@@ -614,7 +490,6 @@ def validate_data_contract(df: pd.DataFrame) -> dict:
     if bad_venue:
         errors.append(f"{bad_venue} rows with invalid venue")
 
-    # 5b. Result must match goals_for / goals_against on each row
     result_consistent = (
         ((df["result"] == "W") & (df["goals_for"] > df["goals_against"])) |
         ((df["result"] == "D") & (df["goals_for"] == df["goals_against"])) |
@@ -623,7 +498,6 @@ def validate_data_contract(df: pd.DataFrame) -> dict:
     if (~result_consistent).sum():
         errors.append(f"{(~result_consistent).sum()} rows with inconsistent result/goals")
 
-    # 6. xG range sanity
     if "xg_for" in df.columns:
         xg_valid = df["xg_for"].dropna()
         if (xg_valid < 0).any():
@@ -631,7 +505,6 @@ def validate_data_contract(df: pd.DataFrame) -> dict:
         if (xg_valid > 15).any():
             warnings.append("xg_for > 15 in some rows — check data")
 
-    # 7. NULL rate warnings
     for col in ["xg_for", "shots_for"]:
         if col in df.columns:
             null_rate = df[col].isna().mean()

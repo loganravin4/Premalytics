@@ -1,24 +1,6 @@
 """
-Dixon-Coles bivariate Poisson score model (ML-04).
-
-    log lambda_home = mu + home_adv * [not neutral] + attack[home] - defense[away]
-    log lambda_away = mu                             + attack[away] - defense[home]
-
-    P(x, y) = tau(x, y) * Poisson(x; lambda_home) * Poisson(y; lambda_away)
-
-tau is the Dixon & Coles (1997) low-score correction with correlation rho:
-    tau(0,0) = 1 - lambda*mu*rho    tau(0,1) = 1 + lambda*rho
-    tau(1,0) = 1 + mu*rho           tau(1,1) = 1 - rho        else 1
-
-Fitting maximizes a weighted log likelihood (weights = exp(-xi * days_ago) times
-an optional per-match competition weight) minus an L2 penalty on attack/defense.
-The penalty identifies the model (no sum-to-zero constraint needed) and shrinks
-teams with few matches toward average, which matters for international
-football where many sides play 8-10 games a year. Teams never seen in training
-get attack = defense = 0.
-
-W/D/L probabilities come from summing the score matrix up to MAX_GOALS per side
-and renormalizing, so they always sum to 1.
+Dixon-Coles bivariate Poisson score model with the low-score tau correction.
+Time-decayed and L2-shrunk toward average, since many international sides play only 8-10 games a year.
 """
 
 from __future__ import annotations
@@ -34,11 +16,11 @@ RHO_BOUNDS = (-0.25, 0.25)
 
 class DixonColes:
     def __init__(self, xi: float = 0.0010, l2: float = 2.0, max_goals: int = MAX_GOALS):
-        self.xi = xi                # time decay per day (0.001 ~ 1.9-year half-life)
-        self.l2 = l2                # ridge strength on attack/defense
+        # 0.001 per day is roughly a 1.9-year half-life.
+        self.xi = xi
+        self.l2 = l2
         self.max_goals = max_goals
 
-    # ------------------------------------------------------------------ fit
     def fit(self, home: pd.Series, away: pd.Series, hg, ag, neutral, dates,
             ref_date=None, weights=None) -> "DixonColes":
         home = np.asarray(home).astype(str)
@@ -80,6 +62,7 @@ class DixonColes:
             tau[x11] = 1 - rho
             tau = np.clip(tau, 1e-10, None)
             ll = w * (np.log(tau) + hg * el - lam + ag * em - m)
+            # The L2 penalty also identifies the model, so no sum-to-zero constraint is needed.
             f = -(ll.sum() - const) / wsum + self.l2 * (att @ att + de @ de) / wsum
 
             # d log tau / d lam, d mu, d rho
@@ -94,8 +77,8 @@ class DixonColes:
             dm[x10] = rho / tau[x10]
             dr[x10] = m[x10] / tau[x10]
             dr[x11] = -1 / tau[x11]
-            g_el = w * (hg - lam + lam * dl)   # d ll / d eta_home
-            g_em = w * (ag - m + m * dm)       # d ll / d eta_away
+            g_el = w * (hg - lam + lam * dl)
+            g_em = w * (ag - m + m * dm)
             g = np.empty_like(theta)
             g[0] = g_el.sum() + g_em.sum()
             g[1] = (g_el * not_neutral).sum()
@@ -120,8 +103,8 @@ class DixonColes:
         self.n_train_ = int(len(hg))
         return self
 
-    # ------------------------------------------------------------ predict
     def expected_goals(self, home, away, neutral) -> tuple[np.ndarray, np.ndarray]:
+        # Teams unseen in training get attack = defense = 0, i.e. average.
         def look(arr, teams):
             return np.array([arr[self.teams_[t]] if t in self.teams_ else 0.0
                              for t in np.asarray(teams).astype(str)])
@@ -147,7 +130,7 @@ def _pois(k: np.ndarray, lam: float) -> np.ndarray:
 
 
 def score_matrix(lam: float, m: float, rho: float, max_goals: int = MAX_GOALS) -> np.ndarray:
-    """Joint P(home=i, away=j) for i, j in 0..max_goals, with the DC tau term, normalized."""
+    """Joint P(home=i, away=j) up to max_goals, with the tau term, renormalized."""
     k = np.arange(max_goals + 1, dtype=float)
     mat = np.outer(_pois(k, lam), _pois(k, m))
     mat[0, 0] *= max(1 - lam * m * rho, 0.0)
@@ -158,6 +141,6 @@ def score_matrix(lam: float, m: float, rho: float, max_goals: int = MAX_GOALS) -
 
 
 def outcome_probs(mat: np.ndarray) -> np.ndarray:
-    """[P(home win), P(draw), P(away win)] from a score matrix (sums to 1)."""
+    """[P(home win), P(draw), P(away win)] from a score matrix."""
     p = np.array([np.tril(mat, -1).sum(), np.trace(mat), np.triu(mat, 1).sum()])
     return p / p.sum()

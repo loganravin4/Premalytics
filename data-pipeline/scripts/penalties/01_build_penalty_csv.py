@@ -1,20 +1,4 @@
-"""
-01_build_penalty_csv.py — PEN-02 penalty kick dataset (v0).
-
-One row per penalty kick (in-game and shootout) from every international
-competition in StatsBomb open data (soccer/statsbomb_open.py COMPETITIONS).
-Columns and their timing class (pre-kick vs post-kick) are defined in
-docs/PENALTY_LABEL_SPEC.md.
-
-Output:
-  data-pipeline/data/static/penalties/penalty_kicks_v0.csv
-
-Events come from the shared gzip cache, so this runs offline after the shot
-exporter has fetched them (or fetches whatever is missing).
-
-Usage:
-  python data-pipeline/scripts/penalties/01_build_penalty_csv.py
-"""
+"""Build the PEN-02 penalty kick dataset (one row per in-game or shootout kick) from StatsBomb open data; columns follow docs/PENALTY_LABEL_SPEC.md."""
 
 from __future__ import annotations
 
@@ -43,12 +27,11 @@ OUT_PATH = PROJECT_ROOT / "data-pipeline" / "data" / "static" / "penalties" / "p
 TEAM_MAP_PATH = PROJECT_ROOT / "data-pipeline" / "data" / "static" / "team_map_intl.csv"
 SOURCE = "statsbomb_open"
 
-# Goal mouth on StatsBomb's pitch (yards). Posts at y=36 and y=44, crossbar
-# at 2.67 yd (8 ft). The taker faces +x, so smaller y is the TAKER'S LEFT.
+# StatsBomb goal mouth in yards; the taker faces +x, so smaller y is the taker's left
 POST_LEFT_Y, POST_RIGHT_Y = 36.0, 44.0
 CROSSBAR_Z = 8.0 / 3.0
-COL_EDGES = (POST_LEFT_Y + 8.0 / 3.0, POST_LEFT_Y + 16.0 / 3.0)   # 38.67, 41.33
-ROW_EDGES = (CROSSBAR_Z / 3.0, 2.0 * CROSSBAR_Z / 3.0)             # 0.89, 1.78
+COL_EDGES = (POST_LEFT_Y + 8.0 / 3.0, POST_LEFT_Y + 16.0 / 3.0)
+ROW_EDGES = (CROSSBAR_Z / 3.0, 2.0 * CROSSBAR_Z / 3.0)
 
 OUTCOME_MAP = {
     "Goal": "goal",
@@ -62,24 +45,19 @@ OUTCOME_MAP = {
 FOOT_MAP = {"Right Foot": "right", "Left Foot": "left"}
 
 SCHEMA_COLS = [
-    # identity / provenance
     "kick_id", "source", "competition_id", "season_id", "competition_gender",
     "tournament_start_date", "match_id", "match_date", "team_id", "opponent_id",
     "taker_id", "taker_name", "keeper_id", "keeper_name",
-    # pre-kick context
     "phase", "period", "minute", "taker_foot", "team_score_before", "opp_score_before",
     "game_state", "shootout_kick_number", "shootout_round", "team_kick_number",
     "team_kicked_first", "shootout_pressure",
-    # post-kick (labels and descriptors; never features)
+    # Post-kick labels and descriptors: never features, they leak the outcome
     "outcome", "is_goal", "end_y", "end_z", "on_target",
     "placement_col", "placement_row", "placement_zone", "foot_side",
     "keeper_technique", "keeper_set",
 ]
 
 
-# ---------------------------------------------------------------------------
-# Placement zones (pure functions, tested in ml/tests/test_penalties.py)
-# ---------------------------------------------------------------------------
 
 def placement_col(end_y: float | None) -> str | None:
     """Horizontal third of the goal from the taker's view: left / center / right."""
@@ -120,11 +98,7 @@ def is_on_target(end_y, end_z) -> bool | None:
 
 
 def foot_side(foot: str | None, col: str | None) -> str | None:
-    """
-    natural: placed to the taker's non-kicking side (right-footer to the left,
-    left-footer to the right), the usual open-body placement.
-    across: the opposite side. center: middle third.
-    """
+    """'natural' if placed to the taker's non-kicking side (the open-body placement), 'across' if the other side, else 'center'."""
     if foot not in ("right", "left") or col is None:
         return None
     if col == "center":
@@ -133,16 +107,9 @@ def foot_side(foot: str | None, col: str | None) -> str | None:
     return "natural" if natural else "across"
 
 
-# ---------------------------------------------------------------------------
-# Shootout state
-# ---------------------------------------------------------------------------
 
 def shootout_decided(ga: int, ta: int, gb: int, tb: int, rounds: int = 5) -> str | None:
-    """
-    Winner ('a' / 'b') once a shootout is mathematically decided, else None.
-    ga/gb are goals, ta/tb kicks taken. Best of `rounds`, then sudden death
-    (decided after equal kicks with unequal goals).
-    """
+    """Winner ('a'/'b') once a best-of-`rounds` shootout, then sudden death, is mathematically decided, else None."""
     if ta <= rounds and tb <= rounds:
         if ga > gb + (rounds - tb):
             return "a"
@@ -155,16 +122,10 @@ def shootout_decided(ga: int, ta: int, gb: int, tb: int, rounds: int = 5) -> str
 
 
 def shootout_pressure(ga: int, ta: int, gb: int, tb: int) -> str:
-    """
-    Pressure on team A's next kick, from the state before it:
-      must_score — a miss loses the shootout
-      can_win    — a goal wins the shootout
-      neutral    — neither
-    """
+    """Pressure on team A's next kick: 'must_score' (a miss loses), 'can_win' (a goal wins), or 'neutral'."""
     miss = shootout_decided(ga, ta + 1, gb, tb)
     score = shootout_decided(ga + 1, ta + 1, gb, tb)
-    # Sudden death: after A's miss with B still to kick, B scoring decides it,
-    # which is not immediate. Only count outcomes decided by this kick alone.
+    # In sudden death B still kicks after A's miss, so only count outcomes this kick decides alone
     if miss == "b":
         return "must_score"
     if score == "a":
@@ -180,12 +141,8 @@ def game_state(for_: int, against: int) -> str:
     return "level"
 
 
-# ---------------------------------------------------------------------------
-# Extraction
-# ---------------------------------------------------------------------------
 
 def _keeper_info(shot_ev: dict, event_index: dict) -> dict:
-    """Keeper id/name from the freeze frame or related Goal Keeper event, plus the recorded action."""
     info = {"keeper_id": None, "keeper_name": None, "keeper_technique": None, "keeper_set": None}
     for rid in shot_ev.get("related_events", []):
         r = event_index.get(rid)
@@ -214,8 +171,9 @@ def kicks_from_match(events: list[dict], ctx: dict, team_codes: dict) -> list[di
     events = sorted(events, key=lambda e: e.get("index", 0))
     event_index = {e["id"]: e for e in events if "id" in e}
     teams = list(team_codes)
-    goals = {t: 0 for t in teams}            # match score, periods 1-4
-    so_goals = {t: 0 for t in teams}         # shootout score
+    # Periods 1-4 only; period 5 is the shootout
+    goals = {t: 0 for t in teams}
+    so_goals = {t: 0 for t in teams}
     so_taken = {t: 0 for t in teams}
     so_first = None
     so_number = 0

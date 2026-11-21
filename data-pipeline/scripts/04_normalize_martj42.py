@@ -1,33 +1,4 @@
-"""
-04_normalize_martj42.py — normalize martj42 results.csv to DATA_CONTRACT.md.
-
-Reads the cached martj42 results.csv (see 03_download_martj42.py) and writes a
-single normalized, dual-row match CSV that conforms to DATA_CONTRACT.md. This
-file is a *supplement* to the FBref competition-split files and therefore lives
-in its own flat source directory (not under {competition_id}/{season_id}/).
-
-Normalization steps (see WC_SPEC.md / DATA_CONTRACT.md):
-  1. Drop pre-1990 matches (modern-ELO relevance) and rows without a final score
-     (future/cancelled fixtures).
-  2. Map tournament -> (competition_id, sample_weight).
-  3. Map team display names -> FIFA 3-letter codes via team_map_intl.csv;
-     unmapped names are logged and their rows skipped.
-  4. Emit two contract rows per match (home + away perspective).
-
-Venue note (DECISION):
-  The task brief asked for venue="Neutral" on neutral-site rows, but
-  DATA_CONTRACT.md locks venue to {Home, Away} and validate_data_contract()
-  (which Part 3 must pass, and which ml/tests/test_validation.py asserts) treats
-  "Neutral" as an invalid venue. We therefore keep venue=Home/Away from the
-  fixture's designated home/away teams and record neutrality in
-  is_neutral_venue=True — identical to the FBref importer's convention.
-
-Output:
-    data-pipeline/data/raw/martj42/match_logs_normalized.csv
-
-Usage:
-    python data-pipeline/scripts/04_normalize_martj42.py
-"""
+"""Normalize martj42 results.csv (post-1990, scored, mapped teams) into one dual-row contract CSV."""
 
 from __future__ import annotations
 
@@ -37,41 +8,36 @@ from pathlib import Path
 
 import pandas as pd
 
-SCRIPT_DIR = Path(__file__).resolve().parent          # .../data-pipeline/scripts/
-PIPELINE_DIR = SCRIPT_DIR.parent                      # .../data-pipeline/
-PROJECT_ROOT = PIPELINE_DIR.parent                    # .../premalytics/
+SCRIPT_DIR = Path(__file__).resolve().parent
+PIPELINE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = PIPELINE_DIR.parent
 
 RAW_DIR = PIPELINE_DIR / "data" / "raw" / "martj42"
 RESULTS_CSV = RAW_DIR / "results.csv"
 OUT_CSV = RAW_DIR / "match_logs_normalized.csv"
 TEAM_MAP_CSV = PIPELINE_DIR / "data" / "static" / "team_map_intl.csv"
 
+# Older results say little about modern team strength
 MIN_DATE = "1990-01-01"
 
-# tournament (exact upstream string) -> (competition_id, sample_weight).
-# Both the WC_SPEC names and the dataset's actual strings are included where
-# they differ (e.g. "African Cup of Nations" vs the spec's "Africa Cup of
-# Nations"; "Gold Cup" vs "CONCACAF Gold Cup") so the intended competition_id
-# is assigned regardless. See "Decisions worth your review".
+# Spec spellings and martj42's actual spellings are both listed where they differ
 COMPETITION_MAP: dict[str, tuple[str, float]] = {
     "FIFA World Cup": ("fifa_world_cup", 1.0),
     "UEFA Euro": ("uefa_euro", 1.0),
     "Copa América": ("copa_america", 1.0),
-    "Africa Cup of Nations": ("afcon", 0.9),       # WC_SPEC spelling
-    "African Cup of Nations": ("afcon", 0.9),      # martj42 dataset spelling
+    "Africa Cup of Nations": ("afcon", 0.9),
+    "African Cup of Nations": ("afcon", 0.9),
     "AFC Asian Cup": ("afc_asian_cup", 0.9),
     "UEFA Nations League": ("uefa_nations_league", 0.7),
-    "CONCACAF Gold Cup": ("concacaf_gold_cup", 0.7),  # WC_SPEC spelling
-    "Gold Cup": ("concacaf_gold_cup", 0.7),           # martj42 dataset spelling
+    "CONCACAF Gold Cup": ("concacaf_gold_cup", 0.7),
+    "Gold Cup": ("concacaf_gold_cup", 0.7),
     "Friendly": ("friendly", 0.3),
 }
 
-# Many martj42 team names carry diacritics (Gǎgǎuzia, Ryūkyū, São Tomé …).
-# Force UTF-8 on stdout so the unmapped-name dump never hits the Windows cp1252
-# console encoder.
+# Team names carry diacritics the Windows cp1252 console can't encode
 try:
     sys.stdout.reconfigure(encoding="utf-8")
-except Exception:  # pragma: no cover — non-reconfigurable stream
+except Exception:  # pragma: no cover
     pass
 
 logging.basicConfig(
@@ -84,28 +50,25 @@ logger = logging.getLogger(__name__)
 
 
 def classify_tournament(tournament: str) -> tuple[str, float]:
-    """Map a tournament name to (competition_id, sample_weight)."""
     if tournament in COMPETITION_MAP:
         return COMPETITION_MAP[tournament]
     low = tournament.lower()
-    # Covers both "qualifier" and "qualification" wording.
+    # Matches both "qualifier" and "qualification"
     if "qualif" in low:
         return ("qualifier", 0.5)
     return ("other_tournament", 0.6)
 
 
 def stage_for(competition_id: str) -> str:
-    """Contract competition_stage from competition_id (no round info upstream)."""
     if competition_id == "friendly":
         return "friendly"
     if competition_id == "qualifier":
         return "qualifier"
-    # All real tournaments: martj42 has no round detail, so default to "group".
+    # martj42 has no round info, so every tournament match is labeled "group", knockouts included
     return "group"
 
 
 def load_team_map(path: Path) -> dict[str, str]:
-    """alias -> FIFA 3-letter code, from team_map_intl.csv."""
     df = pd.read_csv(path)
     mapping: dict[str, str] = {}
     for _, row in df.iterrows():
@@ -128,14 +91,13 @@ def normalize() -> None:
     n_input = len(df)
     logger.info("Read %d input rows from results.csv", n_input)
 
-    # --- 1a. Post-1990 filter ---
     df["_date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df[df["_date"] >= pd.Timestamp(MIN_DATE)]
     n_post_1990 = len(df)
     logger.info("After 1990 filter: %d rows (dropped %d pre-1990/undated)",
                 n_post_1990, n_input - n_post_1990)
 
-    # --- 1b. Drop rows without a final score (future/cancelled fixtures) ---
+    # Unscored rows are future or cancelled fixtures
     df["home_score"] = pd.to_numeric(df["home_score"], errors="coerce")
     df["away_score"] = pd.to_numeric(df["away_score"], errors="coerce")
     df = df[df["home_score"].notna() & df["away_score"].notna()]
@@ -144,7 +106,7 @@ def normalize() -> None:
                 n_scored, n_post_1990 - n_scored)
 
     rows: list[dict] = []
-    unmapped: dict[str, int] = {}   # name -> count of skipped rows mentioning it
+    unmapped: dict[str, int] = {}
     skipped_unmapped = 0
 
     for _, m in df.iterrows():
@@ -167,6 +129,7 @@ def normalize() -> None:
 
         comp_id, weight = classify_tournament(str(m["tournament"]).strip())
         stage = stage_for(comp_id)
+        # venue stays Home/Away because the contract rejects "Neutral"; neutrality lives in is_neutral_venue
         neutral = bool(m["neutral"])
 
         home_goals = int(m["home_score"])
@@ -214,8 +177,7 @@ def normalize() -> None:
         "is_neutral_venue", "sample_weight", "source",
     ])
 
-    # Guard against the same fixture appearing twice in the source (same date,
-    # same home/away). Keeps the dual-row invariant (one row per team per match).
+    # The source repeats some fixtures, which would break one row per team per match
     before = len(out)
     out = out.drop_duplicates(subset=["match_id", "team_id"])
     if len(out) < before:
@@ -226,7 +188,6 @@ def normalize() -> None:
     OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(OUT_CSV, index=False, encoding="utf-8")
 
-    # --- Logging summary ---
     logger.info("=" * 64)
     logger.info("NORMALIZE SUMMARY")
     logger.info("  input rows                 : %d", n_input)

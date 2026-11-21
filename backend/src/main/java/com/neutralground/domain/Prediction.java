@@ -6,7 +6,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
 
-/** A model run's pre-match prediction for one match. */
 @Entity
 @Immutable
 @Table(name = "predictions")

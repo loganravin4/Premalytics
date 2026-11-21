@@ -1,20 +1,6 @@
-"""
-Knockout-stage prediction.
+"""Knockout advance probabilities: the draw mass is split between the teams by expected-goals share.
 
-Draws are not final outcomes in knockout football — a level match is decided
-in extra time / penalties. This wrapper combines the match-outcome model
-(ml.pipeline.predict) with the score model (ml.pipeline.predict_scores) and
-redistributes the draw probability onto the two teams in proportion to their
-expected goals, yielding advance probabilities.
-
-    total_xg = home_xg + away_xg
-    p_home_advances = p_home_win + p_draw * (home_xg / total_xg)
-    p_away_advances = p_away_win + p_draw * (away_xg / total_xg)
-    (50/50 split of the draw mass when total_xg == 0)
-
-Usage:
-    python -m ml.pipeline.predict_knockout \
-        --fixtures path/to/fixtures.csv --stage round_of_32
+Usage: python -m ml.pipeline.predict_knockout --fixtures fixtures.csv --stage round_of_32
 """
 
 import argparse
@@ -46,6 +32,7 @@ def predict_knockout(fixtures, stage: str, run_id: str | None = None,
         home_xg = sc["home_xg"]
         away_xg = sc["away_xg"]
 
+        # Same formula as predict._apply_knockout_redistribution; keep the two in sync.
         total_xg = home_xg + away_xg
         if total_xg <= 0:
             share_home = share_away = 0.5
@@ -56,7 +43,6 @@ def predict_knockout(fixtures, stage: str, run_id: str | None = None,
         p_home_adv = p_home_win + p_draw * share_home
         p_away_adv = p_away_win + p_draw * share_away
 
-        # A level predicted scoreline means the tie would go to ET/pens.
         is_level = sc["predicted_home_goals"] == sc["predicted_away_goals"]
         if is_level:
             note = DRAW_NOTE

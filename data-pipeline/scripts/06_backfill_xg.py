@@ -1,22 +1,6 @@
-"""
-06_backfill_xg.py — backfill match xG from StatsBomb shot aggregates.
+"""Backfill WC 2018/2022 match xG, which FBref leaves NULL, by summing the logistic shot model's p_goal over StatsBomb shots.
 
-The FIFA World Cup 2018/2022 normalized match CSVs carry xg_for / xg_against
-as 100% NULL (FBref did not provide xG for those tournaments). StatsBomb shot
-data IS on disk, so we reconstruct match xG bottom-up:
-
-    match xG for a team = sum of our logistic xG model's p_goal over that
-    team's shots in the match.
-
-The logistic shot model (distance + angle) is the production xG model — see
-ml/models/shot_xg.py — resolved from ml/artifacts/latest_shot_run.txt.
-
-Only the WC 2018 and WC 2022 normalized CSVs are touched, and only rows where
-xg_for IS NULL are overwritten. martj42 and every other competition CSV are
-left untouched.
-
-Usage:
-    python data-pipeline/scripts/06_backfill_xg.py
+Usage: python data-pipeline/scripts/06_backfill_xg.py [--force]
 """
 
 from __future__ import annotations
@@ -29,16 +13,15 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-SCRIPT_DIR = Path(__file__).resolve().parent          # .../data-pipeline/scripts/
-PIPELINE_DIR = SCRIPT_DIR.parent                      # .../data-pipeline/
-PROJECT_ROOT = PIPELINE_DIR.parent                    # .../premalytics/
+SCRIPT_DIR = Path(__file__).resolve().parent
+PIPELINE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = PIPELINE_DIR.parent
 
 SHOT_DIR = PIPELINE_DIR / "data" / "raw" / "shots"
 WC_DIR = PIPELINE_DIR / "data" / "raw" / "fifa_world_cup"
 ARTIFACTS_DIR = PROJECT_ROOT / "ml" / "artifacts"
 LATEST_SHOT_RUN = ARTIFACTS_DIR / "latest_shot_run.txt"
 
-# The production shot model is the logistic baseline (distance + angle only).
 LOGISTIC_FEATURES = ["distance_m", "angle_deg"]
 
 SEASONS = ["2018", "2022"]
@@ -54,7 +37,6 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_shot_model() -> joblib:
-    """Load the production (logistic) xG model from the latest shot run."""
     if not LATEST_SHOT_RUN.exists():
         logger.error("Missing %s — train the shot model first "
                      "(python -m ml.pipeline.train_shots).", LATEST_SHOT_RUN)
@@ -69,21 +51,15 @@ def _resolve_shot_model() -> joblib:
 
 
 def _team_xg_for_season(model, season: str) -> tuple[dict, set]:
-    """
-    Score every shot in a season and return:
-      team_xg: {(match_id, team_id): summed p_goal}
-      match_ids: set of match_ids present in the shot data
-    """
     shot_csv = SHOT_DIR / f"wc_shots_{season}.csv"
     if not shot_csv.exists():
         logger.error("Shot data not found: %s", shot_csv)
         sys.exit(1)
 
     shots = pd.read_csv(shot_csv)
-    # Exclude penalties before scoring — a spot-kick's ~0.75 xG inflates match
-    # xG for teams that earn them (DATA_CONTRACT_SHOTS.md: is_penalty boolean).
-    # Guard the string round-trip ("True") in case the CSV stored it as text.
+    # A penalty's ~0.75 xG would inflate match xG for teams that earn them
     shots = shots[shots["is_penalty"] != True]
+    # is_penalty may have round-tripped through the CSV as the string "True"
     shots = shots[shots["is_penalty"].astype(str).str.lower() != "true"]
 
     goal_idx = list(model.classes_).index(1)
@@ -105,13 +81,11 @@ def backfill_season(model, season: str, force: bool = False) -> None:
     team_xg, shot_match_ids = _team_xg_for_season(model, season)
     df = pd.read_csv(csv_path)
 
-    # --force: clear existing xG so the fill recomputes every covered row
-    # (needed after changing the aggregation, e.g. excluding penalties).
+    # Needed after changing the aggregation, e.g. excluding penalties
     if force:
         df["xg_for"] = None
         df["xg_against"] = None
 
-    # Only fill rows that are (a) currently NULL and (b) covered by shot data.
     null_mask = df["xg_for"].isna()
     covered = df["match_id"].isin(shot_match_ids)
     target = null_mask & covered

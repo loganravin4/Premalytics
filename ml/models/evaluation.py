@@ -1,7 +1,3 @@
-"""
-Model evaluation utilities: metrics, calibration, feature importance.
-"""
-
 import logging
 from typing import Any
 
@@ -28,24 +24,10 @@ def compute_metrics(
     y_proba: np.ndarray,
     label_order: list[str] = TARGET_CLASSES,
 ) -> dict:
-    """
-    Compute all evaluation metrics for a set of predictions.
-
-    Args:
-        y_true:      True class labels (e.g., ["H", "D", "A", ...])
-        y_pred:      Predicted class labels
-        y_proba:     Predicted probabilities shape (n, n_classes)
-        label_order: Class ordering for probability columns
-
-    Returns:
-        dict with: accuracy, log_loss, brier_H, brier_D, brier_A,
-                   classification_report_str
-    """
     acc  = accuracy_score(y_true, y_pred)
-    # Pass labels explicitly in alphabetical order to match sklearn's default probability ordering
+    # sklearn orders probability columns alphabetically, so the labels must be sorted to match.
     ll   = log_loss(y_true, y_proba, labels=sorted(label_order))
 
-    # Brier score per class (one-vs-rest)
     brier = {}
     for i, cls in enumerate(label_order):
         y_bin = (np.asarray(y_true) == cls).astype(int)
@@ -79,11 +61,6 @@ def calibration_summary(
     label_order: list[str] = TARGET_CLASSES,
     n_bins: int = 10,
 ) -> dict[str, tuple]:
-    """
-    Compute calibration curves for each class.
-
-    Returns dict: {class_label: (fraction_of_positives, mean_predicted_value)}
-    """
     results = {}
     for i, cls in enumerate(label_order):
         y_bin = (np.asarray(y_true) == cls).astype(int)
@@ -99,12 +76,6 @@ def per_class_metrics(
     label_order: list[str] = TARGET_CLASSES,
     n_bins: int = 10,
 ) -> dict:
-    """
-    Structured per-class diagnostics: precision, recall, F1, support,
-    and calibration MAE (mean absolute deviation from perfect calibration).
-
-    Returns dict: {class: {precision, recall, f1, support, calibration_mae}}
-    """
     prec, rec, f1, support = precision_recall_fscore_support(
         y_true, y_pred, labels=label_order, zero_division=0
     )
@@ -132,11 +103,6 @@ def calibration_curves_dict(
     label_order: list[str] = TARGET_CLASSES,
     n_bins: int = 10,
 ) -> dict:
-    """
-    Machine-readable calibration curves per class (for downstream plotting).
-
-    Returns {class: {fraction_of_positives: [...], mean_predicted_value: [...]}}
-    """
     result = {}
     for i, cls in enumerate(label_order):
         y_bin = (np.asarray(y_true) == cls).astype(int)
@@ -157,12 +123,7 @@ def error_slices_by_col(
     n_bins: int = 3,
     bin_labels: list[str] | None = None,
 ) -> dict:
-    """
-    Slice error_df by quantile bins of a continuous feature column.
-
-    error_df must contain a boolean 'correct' column.
-    Returns {bin_label: {accuracy, n, mean_value}} or {} if column is absent/sparse.
-    """
+    """Accuracy per quantile bin of slice_col; error_df needs a boolean 'correct' column."""
     if slice_col not in error_df.columns:
         return {}
     valid = error_df[error_df[slice_col].notna()].copy()
@@ -195,16 +156,6 @@ def permutation_importance_df(
     n_repeats: int = 10,
     random_state: int = 42,
 ) -> pd.DataFrame:
-    """
-    Compute permutation importance on a held-out set.
-
-    Works with any fitted estimator regardless of internal structure (CalibratedClassifierCV,
-    HistGBM, LightGBM, etc.). More informative than training-time importance because it
-    measures actual predictive contribution on unseen data.
-
-    Returns a DataFrame sorted by mean_importance descending, with columns:
-        feature, mean_importance, std_importance
-    """
     result = permutation_importance(
         model_pipeline, X, y,
         n_repeats=n_repeats,
@@ -223,20 +174,11 @@ def permutation_importance_df(
 
 
 def feature_importance_df(model_pipeline: Any, feature_names: list[str]) -> pd.DataFrame:
-    """
-    Extract feature importance from a fitted pipeline.
-
-    For CalibratedClassifierCV, averages importances across all calibration
-    folds (not just fold 0) for a more stable estimate.
-    Handles HistGBM, LightGBM, and LogisticRegression (uses coef_ magnitude).
-    Returns a DataFrame sorted by importance descending.
-    """
     clf = model_pipeline
-    # Unwrap pipeline steps
     if hasattr(clf, "named_steps"):
         clf = clf.named_steps.get("clf", clf)
 
-    # Unwrap CalibratedClassifierCV — average importances across all folds
+    # Average over every calibration fold, not just fold 0, for a stabler estimate.
     if hasattr(clf, "calibrated_classifiers_"):
         imps = []
         for cc in clf.calibrated_classifiers_:

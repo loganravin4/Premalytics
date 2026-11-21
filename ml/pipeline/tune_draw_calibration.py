@@ -1,22 +1,6 @@
-"""
-tune_draw_calibration.py — grid search for the draw-probability calibration.
+"""Grid-search the threshold draw calibration on walk-forward backtest predictions.
 
-The gradient boosting match-outcome model underweights the draw when one team
-is a heavy favorite. `_apply_draw_calibration` (ml/pipeline/predict.py) moves
-alpha * (p_favorite - threshold) of the favorite's mass to the draw.
-
-ML-04: the grid now runs on WALK-FORWARD out-of-sample predictions from
-`python -m ml.pipeline.backtest` (every major tournament 2010-2025), never on
-WC 2026. The old version tuned on the WC 2026 holdout it was then scored on.
-
-Two views are printed:
-  * the grid on all pre-2026 folds pooled (what you would ship), and
-  * the nested walk-forward score: each tournament scored with the params
-    tuned only on tournaments that finished before it started. If nested
-    calibration does not beat "no calibration", keep it off.
-
-Usage:
-    python -m ml.pipeline.tune_draw_calibration [--backtest-dir DIR] [--model gbm]
+Usage: python -m ml.pipeline.tune_draw_calibration [--backtest-dir DIR] [--model gbm]
 """
 
 import argparse
@@ -33,6 +17,7 @@ from ml.models.calibration import ThresholdDrawCal, apply_threshold_draw_cal
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
+# Never tune on WC 2026: the old version tuned on the same holdout it was scored on.
 EXCLUDED_FOLDS = {"fifa_world_cup_2026"}
 OUTCOME_IDX = {"home": M.HOME, "draw": M.DRAW, "away": M.AWAY}
 
@@ -104,6 +89,7 @@ def main() -> None:
         print(f"{r['threshold']:>9.2f}  {r['alpha']:>5.2f}  {r['log_loss']:>8.4f}  "
               f"{r['rps']:>7.4f}  {r['accuracy']:>6.3f}  {r['draw_recall']:>8.3f}{mark}")
 
+    # If nested calibration doesn't beat "none", keep calibration off.
     nest = nested(df)
     print(f"\nNested walk-forward over {nest['n']} reported matches:")
     for k in ("none", "nested"):

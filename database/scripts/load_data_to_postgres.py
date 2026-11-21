@@ -1,30 +1,4 @@
-"""
-=============================================================================
-File: load_data_to_postgres.py
-Description: Loads scraped CSV data into PostgreSQL database
-Author: Premalytics Team
-Date: 2024
-=============================================================================
-
-This script loads all CSV data from data/raw/ into the PostgreSQL database.
-
-PROCESS OVERVIEW:
-1. Load dimension tables first (teams, seasons, players)
-2. Load fact tables (matches, player_season_stats, player_keeper_stats)
-3. Validate data integrity
-4. Generate summary report
-
-DEPENDENCIES:
-- psycopg2: PostgreSQL adapter for Python
-- pandas: Data manipulation
-- pathlib: File path handling
-- python-dotenv: Environment variable management
-
-USAGE:
-    python database/scripts/load_data_to_postgres.py
-
-Note: Requires database connection details in .env file or config.py
-"""
+"""Legacy EPL loader: load scraped FBref team and player CSVs from data/raw/{season}/{team}/ into pl_data tables."""
 
 import os
 import sys
@@ -37,24 +11,19 @@ from datetime import datetime
 import logging
 from typing import Dict, List, Tuple, Optional
 
-# Set console encoding to UTF-8 for Windows (before any logging)
+# Before any logging, since log lines carry emoji the Windows console can't encode
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
-# Import configuration
 from config import get_db_config, get_db_schema, get_project_root
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
 
-# Get configuration from environment variables
 DB_CONFIG = get_db_config()
 DB_SCHEMA = get_db_schema()
 PROJECT_ROOT = get_project_root()
-DATA_DIR = PROJECT_ROOT / 'data-pipeline' / 'data' / 'raw'  # ← FIXED
+DATA_DIR = PROJECT_ROOT / 'data-pipeline' / 'data' / 'raw'
 
-# Seasons to load (exclude incomplete 2025-2026)
+# Excludes the incomplete 2025-2026 season
 SEASONS_TO_LOAD = [
     '2021-2022',
     '2022-2023', 
@@ -62,34 +31,21 @@ SEASONS_TO_LOAD = [
     '2024-2025'
 ]
 
-# Set up logging with UTF-8 encoding
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(
             PROJECT_ROOT / 'database' / 'scripts' / 'data_loading.log',
-            encoding='utf-8'  # ← Force UTF-8
+            encoding='utf-8'
         ),
         logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# DATABASE CONNECTION
-# =============================================================================
 
 def get_db_connection():
-    """
-    Establish connection to PostgreSQL database.
-    
-    Returns:
-        psycopg2.connection: Database connection object
-        
-    Raises:
-        psycopg2.Error: If connection fails
-    """
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         logger.info(f"✅ Connected to database: {DB_CONFIG['database']}")
@@ -99,104 +55,37 @@ def get_db_connection():
         raise
 
 def close_db_connection(conn):
-    """
-    Close database connection.
-    
-    Args:
-        conn: Database connection object
-    """
     if conn:
         conn.close()
         logger.info("🔒 Database connection closed")
 
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
 
 def extract_team_id_from_url(team_url: str) -> str:
-    """
-    Extract team ID from FBRef URL.
-    
-    Args:
-        team_url: FBRef team URL (e.g., '/en/squads/b8fd03ef/2023-2024/Liverpool-Stats')
-        
-    Returns:
-        str: Team ID (e.g., 'b8fd03ef')
-        
-    Example:
-        >>> extract_team_id_from_url('/en/squads/b8fd03ef/2023-2024/Liverpool-Stats')
-        'b8fd03ef'
-    """
     # URL format: /en/squads/{team_id}/{season}/{team_name}-Stats
     parts = team_url.split('/')
     return parts[3] if len(parts) > 3 else None
 
 def extract_team_name_from_path(team_path: Path) -> str:
-    """
-    Extract team name from directory path.
-    
-    Args:
-        team_path: Path to team directory (e.g., 'data/raw/2023-2024/Liverpool')
-        
-    Returns:
-        str: Team name (e.g., 'Liverpool')
-    """
     return team_path.name
 
 def convert_minutes_to_int(minutes_str: str) -> Optional[int]:
-    """
-    Convert minutes string with commas to integer.
-    
-    Args:
-        minutes_str: Minutes as string (e.g., '2,534' or '900')
-        
-    Returns:
-        int: Minutes as integer (e.g., 2534) or None if invalid
-        
-    Example:
-        >>> convert_minutes_to_int('2,534')
-        2534
-        >>> convert_minutes_to_int('900')
-        900
-    """
     if pd.isna(minutes_str) or minutes_str == '':
         return None
-    # Remove commas and convert to int
     return int(str(minutes_str).replace(',', ''))
 
 def normalize_team_name(team_name: str) -> str:
-    """
-    Normalize team name to match directory structure.
-    Converts spaces to hyphens for consistent matching.
-    """
     return team_name.replace(' ', '-')
 
-# =============================================================================
-# PHASE 1: LOAD DIMENSION TABLES
-# =============================================================================
 
 def load_teams(conn) -> Dict[str, str]:
-    """
-    Load teams dimension table.
-    
-    Uses team directory names to generate consistent, deterministic team IDs.
-    This ensures team_id uniqueness and proper matching between teams and opponents.
-    
-    Args:
-        conn: Database connection
-        
-    Returns:
-        Dict[str, str]: Mapping of team_name -> team_id
-    """
     logger.info("\n" + "="*80)
     logger.info("PHASE 1.1: Loading teams dimension table")
     logger.info("="*80)
     
     cursor = conn.cursor()
-    teams_dict = {}  # team_name -> team_id mapping
+    teams_dict = {}
     
     try:
-        # Step 1: Collect unique teams from all seasons
         all_teams = set()
         for season in SEASONS_TO_LOAD:
             season_path = DATA_DIR / season
@@ -205,25 +94,20 @@ def load_teams(conn) -> Dict[str, str]:
                 logger.warning(f"⚠️  Season directory not found: {season_path}")
                 continue
             
-            # Collect team names from directories
             for team_dir in season_path.iterdir():
                 if team_dir.is_dir():
                     team_name = extract_team_name_from_path(team_dir)
                     all_teams.add(team_name)
         
-        # Step 2: Generate consistent team_ids and insert into database
         import hashlib
         
         for team_name in sorted(all_teams):
-            # Generate consistent 8-character team_id from team name using MD5 hash
-            # This ensures the same team always gets the same ID
+            # MD5 of the name gives each team the same ID on every run
             team_id = hashlib.md5(team_name.encode()).hexdigest()[:8]
             teams_dict[team_name] = team_id
             
-            # Construct team URL
             team_url = f"/en/squads/{team_id}/{team_name.replace(' ', '-')}-Stats"
             
-            # Insert into database
             cursor.execute("""
                 INSERT INTO pl_data.teams (team_id, team_name, team_url)
                 VALUES (%s, %s, %s)
@@ -233,7 +117,6 @@ def load_teams(conn) -> Dict[str, str]:
         conn.commit()
         logger.info(f"✅ Loaded {len(teams_dict)} teams into database")
         
-        # Log team names and IDs for verification
         for team_name, team_id in sorted(teams_dict.items()):
             logger.info(f"   {team_name}: {team_id}")
         
@@ -247,14 +130,6 @@ def load_teams(conn) -> Dict[str, str]:
         cursor.close()
 
 def load_seasons(conn) -> None:
-    """
-    Load seasons dimension table.
-    
-    Inserts season records for all seasons to be loaded.
-    
-    Args:
-        conn: Database connection
-    """
     logger.info("\n" + "="*80)
     logger.info("PHASE 1.2: Loading seasons dimension table")
     logger.info("="*80)
@@ -263,10 +138,8 @@ def load_seasons(conn) -> None:
     
     try:
         for season_id in SEASONS_TO_LOAD:
-            # Parse season (e.g., '2023-2024' -> start_year=2023, end_year=2024)
             start_year, end_year = map(int, season_id.split('-'))
             
-            # Insert season
             cursor.execute("""
                 INSERT INTO pl_data.seasons (
                     season_id, 
@@ -292,25 +165,12 @@ def load_seasons(conn) -> None:
         cursor.close()
 
 def load_players(conn, teams_dict: Dict[str, str]) -> Dict[Tuple[str, str, str], int]:
-    """
-    Load players dimension table.
-    
-    Reads player data from CSV files and inserts into players table.
-    Returns mapping for player_season_id lookups.
-    
-    Args:
-        conn: Database connection
-        teams_dict: Mapping of team_name -> team_id
-        
-    Returns:
-        Dict: Mapping of (player_id, team_id, season_id) -> player_season_id
-    """
     logger.info("\n" + "="*80)
     logger.info("PHASE 1.3: Loading players dimension table")
     logger.info("="*80)
     
     cursor = conn.cursor()
-    player_mapping = {}  # (player_id, team_id, season_id) -> player_season_id
+    player_mapping = {}
     total_players = 0
     
     try:
@@ -322,7 +182,6 @@ def load_players(conn, teams_dict: Dict[str, str]) -> Dict[Tuple[str, str, str],
             
             season_players = 0
             
-            # Iterate through teams
             for team_dir in season_path.iterdir():
                 if not team_dir.is_dir():
                     continue
@@ -334,7 +193,7 @@ def load_players(conn, teams_dict: Dict[str, str]) -> Dict[Tuple[str, str, str],
                     logger.warning(f"⚠️  Team ID not found for: {team_name}")
                     continue
                 
-                # Read player_standard_stats.csv (has all players for the team)
+                # player_standard_stats lists every player on the team
                 standard_stats_files = list(team_dir.glob('player_standard_stats_*.csv'))
                 
                 if not standard_stats_files:
@@ -343,7 +202,6 @@ def load_players(conn, teams_dict: Dict[str, str]) -> Dict[Tuple[str, str, str],
                 
                 df = pd.read_csv(standard_stats_files[0])
                 
-                # Insert each player
                 for _, row in df.iterrows():
                     player_id = row['player_id']
                     player_name = row['player']
@@ -351,13 +209,11 @@ def load_players(conn, teams_dict: Dict[str, str]) -> Dict[Tuple[str, str, str],
                     nationality = row.get('nationality', None)
                     position = row.get('position', None)
                     
-                    # Handle age safely
                     age = None
                     raw_age = row.get('age', None)
                     if pd.notna(raw_age) and raw_age != '':
                         try:
                             age = int(float(raw_age))
-                            # Sanity check: reasonable age range
                             if age < 15 or age > 50:
                                 logger.warning(f"⚠️  Unusual age for {player_name}: {age} (setting to NULL)")
                                 age = None
@@ -365,11 +221,10 @@ def load_players(conn, teams_dict: Dict[str, str]) -> Dict[Tuple[str, str, str],
                             logger.warning(f"⚠️  Invalid age for {player_name}: '{raw_age}' (setting to NULL)")
                             age = None
                     
-                    # Skip players with no data (empty rows at end of CSV)
+                    # Empty rows at the end of the CSV
                     if pd.isna(player_id) or player_id == '':
                         continue
                     
-                    # Insert player and get player_season_id
                     cursor.execute("""
                         INSERT INTO pl_data.players (
                             player_id, player_name, player_url, team_id, season_id,
@@ -384,7 +239,6 @@ def load_players(conn, teams_dict: Dict[str, str]) -> Dict[Tuple[str, str, str],
                     
                     player_season_id = cursor.fetchone()[0]
                     
-                    # Store mapping
                     player_mapping[(player_id, team_id, season)] = player_season_id
                     season_players += 1
             
@@ -403,21 +257,8 @@ def load_players(conn, teams_dict: Dict[str, str]) -> Dict[Tuple[str, str, str],
     finally:
         cursor.close()
 
-# =============================================================================
-# PHASE 2: LOAD FACT TABLES
-# =============================================================================
 
 def load_matches(conn, teams_dict: Dict[str, str]) -> None:
-    """
-    Load matches fact table.
-    
-    Reads match_logs CSV files and inserts team-level match data.
-    Each match appears twice (once per team).
-    
-    Args:
-        conn: Database connection
-        teams_dict: Mapping of team_name -> team_id
-    """
     logger.info("\n" + "="*80)
     logger.info("PHASE 2.1: Loading matches fact table")
     logger.info("="*80)
@@ -434,7 +275,6 @@ def load_matches(conn, teams_dict: Dict[str, str]) -> None:
             
             season_matches = 0
             
-            # Iterate through teams
             for team_dir in season_path.iterdir():
                 if not team_dir.is_dir():
                     continue
@@ -446,7 +286,6 @@ def load_matches(conn, teams_dict: Dict[str, str]) -> None:
                     logger.warning(f"⚠️  Team ID not found for: {team_name}")
                     continue
                 
-                # Read match_logs CSV
                 match_log_files = list(team_dir.glob('match_logs_*.csv'))
                 
                 if not match_log_files:
@@ -455,27 +294,22 @@ def load_matches(conn, teams_dict: Dict[str, str]) -> None:
                 
                 df = pd.read_csv(match_log_files[0])
                 
-                # Insert each match
                 for _, row in df.iterrows():
-                    # Get opponent name from CSV (this is reliable)
                     opponent_name = row['opponent']
                     
-                    # Normalize opponent name (spaces → hyphens) to match directory names
+                    # Directory names use hyphens for spaces
                     opponent_name_normalized = normalize_team_name(opponent_name)
 
-                    # Look up opponent_id from our teams dictionary
                     opponent_id = teams_dict.get(opponent_name_normalized)
                     
                     if not opponent_id:
                         logger.warning(f"⚠️  Opponent not found in teams: {opponent_name} (skipping match)")
                         continue
                     
-                    # Handle None values gracefully
                     xg_for = None if pd.isna(row.get('xg_for')) else float(row['xg_for'])
                     xg_against = None if pd.isna(row.get('xg_against')) else float(row['xg_against'])
                     possession = None if pd.isna(row.get('possession')) else int(row['possession'])
                     
-                    # Insert match record
                     cursor.execute("""
                         INSERT INTO pl_data.matches (
                             match_id, season_id, team_id,
@@ -495,7 +329,7 @@ def load_matches(conn, teams_dict: Dict[str, str]) -> None:
                         row['match_id'], season, team_id,
                         row['date'], row.get('start_time'), row.get('round'), 
                         row.get('dayofweek'), row['venue'],
-                        opponent_id, row.get('opponent_url'),  # opponent_id is now from lookup
+                        opponent_id, row.get('opponent_url'),
                         row['result'], row['goals_for'], row['goals_against'], 
                         xg_for, xg_against,
                         possession, row.get('attendance'), row.get('captain'), 
@@ -520,17 +354,6 @@ def load_matches(conn, teams_dict: Dict[str, str]) -> None:
 
 def load_player_season_stats(conn, teams_dict: Dict[str, str], 
                              player_mapping: Dict[Tuple[str, str, str], int]) -> None:
-    """
-    Load player_season_stats fact table (WIDE TABLE).
-    
-    Merges 7 player stat CSV types into one comprehensive table.
-    This is the BIG ONE - 130+ columns!
-    
-    Args:
-        conn: Database connection
-        teams_dict: Mapping of team_name -> team_id
-        player_mapping: Mapping of (player_id, team_id, season_id) -> player_season_id
-    """
     logger.info("\n" + "="*80)
     logger.info("PHASE 2.2: Loading player_season_stats fact table (WIDE TABLE)")
     logger.info("="*80)
@@ -539,7 +362,7 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
     cursor = conn.cursor()
     total_records = 0
     
-    # CSV file types to merge (excluding goalkeeper stats)
+    # Goalkeeper stats are excluded
     stat_types = [
         'player_standard_stats',
         'player_shooting_stats',
@@ -559,7 +382,6 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
             
             season_records = 0
             
-            # Iterate through teams
             for team_dir in season_path.iterdir():
                 if not team_dir.is_dir():
                     continue
@@ -570,7 +392,6 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                 if not team_id:
                     continue
                 
-                # Load and merge all stat types for this team
                 merged_df = None
                 
                 for stat_type in stat_types:
@@ -582,16 +403,13 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                     
                     df = pd.read_csv(stat_files[0])
                     
-                    # Remove 'matches' column (not needed, causes merge issues)
+                    # 'matches' isn't needed and breaks the merge
                     if 'matches' in df.columns:
                         df = df.drop(columns=['matches'])
                     
-                    # First stat type becomes base DataFrame
                     if merged_df is None:
                         merged_df = df
                     else:
-                        # Merge only on player_id (simplest approach)
-                        # Drop duplicate metadata columns before merge
                         metadata_cols = ['player_url', 'player', 'nationality', 'position', 'age', 'minutes_90s']
                         cols_to_drop = [col for col in df.columns 
                                       if col in merged_df.columns and col != 'player_id']
@@ -611,22 +429,18 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                     logger.warning(f"⚠️  No stats found for {team_name} in {season}")
                     continue
                 
-                # Insert merged stats for each player
                 for idx, row in merged_df.iterrows():
                     player_id = row.get('player_id')
                     
-                    # Skip empty rows
                     if pd.isna(player_id) or player_id == '':
                         continue
                     
-                    # Get player_season_id from mapping
                     player_season_id = player_mapping.get((player_id, team_id, season))
                     
                     if not player_season_id:
                         logger.warning(f"⚠️  Player {player_id} not found in mapping for {team_name} {season}")
                         continue
                     
-                    # Convert minutes string to int safely
                     minutes = None
                     minutes_str = row.get('minutes')
                     if pd.notna(minutes_str) and minutes_str != '':
@@ -635,19 +449,16 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                         except (ValueError, TypeError):
                             pass
                     
-                    # Helper function to safely get values
                     def safe_get(column_name, default=None):
-                        """Safely get column value, return None if missing or NaN"""
                         value = row.get(column_name, default)
                         if pd.isna(value):
                             return None
                         return value
                     
-                    # Use savepoint to allow individual INSERT failures without aborting transaction
-                    # Sanitize savepoint name to ensure valid PostgreSQL identifier
+                    # A savepoint per player lets one failed INSERT skip without aborting the transaction
                     savepoint_name = f"sp_{player_id}_{team_id}_{season}"
                     savepoint_name = re.sub(r'[^a-zA-Z0-9_]', '_', savepoint_name)
-                    # Ensure it starts with a letter and is not too long (PostgreSQL limit is 63 chars)
+                    # Postgres identifiers must start with a letter and fit in 63 chars
                     if not savepoint_name[0].isalpha():
                         savepoint_name = 'sp_' + savepoint_name
                     savepoint_name = savepoint_name[:63]
@@ -655,7 +466,6 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                     try:
                         cursor.execute(f"SAVEPOINT {savepoint_name}")
                         
-                        # Build INSERT statement with ALL 130+ columns
                         cursor.execute("""
                             INSERT INTO pl_data.player_season_stats (
                                 player_season_id,
@@ -730,7 +540,6 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                         """, (
                             player_season_id,
                             
-                            # Standard stats (29 values)
                             safe_get('games'), safe_get('games_starts'), minutes, safe_get('minutes_90s'),
                             safe_get('goals'), safe_get('assists'), safe_get('goals_assists'), 
                             safe_get('goals_pens'), safe_get('pens_made'), safe_get('pens_att'),
@@ -743,14 +552,12 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                             safe_get('xg_per90'), safe_get('xg_assist_per90'), safe_get('xg_xg_assist_per90'),
                             safe_get('npxg_per90'), safe_get('npxg_xg_assist_per90'),
                             
-                            # Shooting stats (12 values)
                             safe_get('shots'), safe_get('shots_on_target'), safe_get('shots_on_target_pct'),
                             safe_get('shots_per90'), safe_get('shots_on_target_per90'),
                             safe_get('goals_per_shot'), safe_get('goals_per_shot_on_target'),
                             safe_get('average_shot_distance'), safe_get('shots_free_kicks'),
                             safe_get('npxg_per_shot'), safe_get('xg_net'), safe_get('npxg_net'),
                             
-                            # Passing stats (20 values)
                             safe_get('passes_completed'), safe_get('passes'), safe_get('passes_pct'),
                             safe_get('passes_total_distance'), safe_get('passes_progressive_distance'),
                             safe_get('passes_completed_short'), safe_get('passes_short'), safe_get('passes_pct_short'),
@@ -760,7 +567,6 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                             safe_get('passes_into_final_third'), safe_get('passes_into_penalty_area'), 
                             safe_get('crosses_into_penalty_area'),
                             
-                            # Passing types (13 values)
                             safe_get('passes_live'), safe_get('passes_dead'), safe_get('passes_free_kicks'),
                             safe_get('through_balls'), safe_get('passes_switches'), safe_get('crosses'), 
                             safe_get('throw_ins'),
@@ -768,7 +574,6 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                             safe_get('corner_kicks_straight'),
                             safe_get('passes_offsides'), safe_get('passes_blocked'),
                             
-                            # GCA stats (16 values)
                             safe_get('sca'), safe_get('sca_per90'),
                             safe_get('sca_passes_live'), safe_get('sca_passes_dead'), safe_get('sca_take_ons'), 
                             safe_get('sca_shots'), safe_get('sca_fouled'), safe_get('sca_defense'),
@@ -776,7 +581,6 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                             safe_get('gca_passes_live'), safe_get('gca_passes_dead'), safe_get('gca_take_ons'), 
                             safe_get('gca_shots'), safe_get('gca_fouled'), safe_get('gca_defense'),
                             
-                            # Defense stats (16 values)
                             safe_get('tackles'), safe_get('tackles_won'),
                             safe_get('tackles_def_3rd'), safe_get('tackles_mid_3rd'), safe_get('tackles_att_3rd'),
                             safe_get('challenge_tackles'), safe_get('challenges'), safe_get('challenge_tackles_pct'), 
@@ -785,7 +589,6 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                             safe_get('interceptions'), safe_get('tackles_interceptions'), 
                             safe_get('clearances'), safe_get('errors'),
                             
-                            # Possession stats (22 values)
                             safe_get('touches'), safe_get('touches_def_pen_area'), safe_get('touches_def_3rd'), 
                             safe_get('touches_mid_3rd'),
                             safe_get('touches_att_3rd'), safe_get('touches_att_pen_area'), 
@@ -793,27 +596,26 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
                             safe_get('take_ons'), safe_get('take_ons_won'), safe_get('take_ons_won_pct'),
                             safe_get('take_ons_tackled'), safe_get('take_ons_tackled_pct'),
                             safe_get('carries'), safe_get('carries_distance'), safe_get('carries_progressive_distance'),
-                            safe_get('progressive_carries_poss'),  # From possession stats (different from standard stats progressive_carries)
+                            # The possession table's version, distinct from the standard stats progressive_carries
+                            safe_get('progressive_carries_poss'),
                             safe_get('carries_into_final_third'), safe_get('carries_into_penalty_area'),
                             safe_get('miscontrols'), safe_get('dispossessed'),
                             safe_get('passes_received'), safe_get('progressive_passes_received_poss')
                         ))
                         
-                        # Check if row was inserted (not skipped due to conflict)
+                        # rowcount is 0 when ON CONFLICT skipped the row
                         if cursor.rowcount > 0:
                             season_records += 1
                         
-                        # Release savepoint on success
                         cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
                         
                     except Exception as e:
-                        # Rollback to savepoint to allow transaction to continue
                         try:
                             cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
                         except Exception:
-                            pass  # Savepoint might not exist if error occurred before it was created
+                            # The savepoint doesn't exist if SAVEPOINT itself failed
+                            pass
                         
-                        # Log the specific error but continue processing
                         logger.warning(f"⚠️  Failed to insert player {player_id} from {team_name}: {e}")
                         continue
             
@@ -830,40 +632,29 @@ def load_player_season_stats(conn, teams_dict: Dict[str, str],
     finally:
         cursor.close()
         
-# =============================================================================
-# MAIN EXECUTION
-# =============================================================================
 
 def main():
-    """
-    Main execution function.
-    Orchestrates the entire data loading process.
-    """
     logger.info("\n" + "="*80)
-    logger.info("🚀 PREMALYTICS DATA LOADING SCRIPT")
+    logger.info("🚀 NEUTRAL GROUND DATA LOADING SCRIPT")
     logger.info("="*80)
     logger.info(f"📂 Data directory: {DATA_DIR}")
     logger.info(f"🗄️  Database: {DB_CONFIG['database']}")
     logger.info(f"📅 Seasons to load: {', '.join(SEASONS_TO_LOAD)}")
     logger.info("="*80)
     
-    # Verify data directory exists
     if not DATA_DIR.exists():
         logger.error(f"❌ Data directory not found: {DATA_DIR}")
         sys.exit(1)
     
-    # Connect to database
     conn = None
     
     try:
         conn = get_db_connection()
         
-        # PHASE 1: Load dimension tables
         teams_dict = load_teams(conn)
         load_seasons(conn)
         player_mapping = load_players(conn, teams_dict)
         
-        # PHASE 2: Load fact tables
         load_matches(conn, teams_dict)
         load_player_season_stats(conn, teams_dict, player_mapping)
         

@@ -1,5 +1,4 @@
-// Builds the typed JSON the site reads from the pipeline's own outputs.
-// Run from frontend/: `npm run data`. Output is committed so the site builds without the pipeline.
+// Output is committed so the site builds without the pipeline; regenerate with `npm run data`
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,7 +32,7 @@ function parseCsv(text) {
 }
 const csv = (p) => parseCsv(readFileSync(p, 'utf8'));
 
-// Latest scored evaluation run (directory names are timestamps).
+// Run directories are timestamps, so the last in sort order is the latest
 const evalRoot = join(dataDir, 'evaluation', 'wc2026');
 const runs = readdirSync(evalRoot).filter((d) => existsSync(join(evalRoot, d, 'predictions_scored.csv'))).sort();
 if (!runs.length) throw new Error(`No scored runs under ${evalRoot}`);
@@ -97,8 +96,7 @@ const teams = codes.map((code) => {
   return { code, name: NAME_OVERRIDES[code] ?? row?.full_name ?? code, confederation: row?.confederation ?? 'OTHER' };
 });
 
-// Groups are the connected components of the group-stage schedule. Official group letters
-// are not in the data, so groups are identified by their teams, never by an invented letter.
+// Official group letters are not in the data, so groups are named by their teams, never an invented letter
 const groupMatches = matches.filter((m) => m.stage === 'group');
 const parent = new Map(codes.map((c) => [c, c]));
 const find = (c) => (parent.get(c) === c ? c : find(parent.get(c)));

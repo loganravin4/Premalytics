@@ -3,10 +3,7 @@ package com.neutralground.config;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * Turns on the Caffeine cache behind the read services (spec in spring.cache.caffeine.spec).
- * Kept out of the application class so MVC slice tests do not need a CacheManager.
- */
+/** Kept out of the application class so MVC slice tests do not need a CacheManager. */
 @Configuration
 @EnableCaching
 public class CacheConfig {

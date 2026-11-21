@@ -1,15 +1,3 @@
-"""
-Gradient boosting model for match outcome prediction.
-
-Uses sklearn's HistGradientBoostingClassifier as the primary model because:
-  - Native NaN handling (no imputation step needed)
-  - Fast training on small datasets (< 10k rows)
-  - Competitive accuracy with LightGBM on tabular data this size
-
-If lightgbm is installed, LGBMClassifier is used instead (faster, better
-calibrated out-of-the-box). Install with: pip install lightgbm
-"""
-
 import json
 import logging
 
@@ -34,15 +22,6 @@ def make_hgb_pipeline(
     min_samples_leaf: int = 20,
     calibrate: bool = True,
 ) -> Pipeline:
-    """
-    HistGradientBoostingClassifier with optional Platt scaling calibration.
-
-    Hyperparameters are set conservatively to avoid overfitting on ~1,500 training
-    rows (two seasons × ~760 rows/season). Use walk-forward CV to tune.
-
-    Args:
-        calibrate: Wrap in CalibratedClassifierCV for better probability estimates.
-    """
     hgb = HistGradientBoostingClassifier(
         max_iter=max_iter,
         learning_rate=learning_rate,
@@ -54,12 +33,12 @@ def make_hgb_pipeline(
     )
 
     if calibrate:
-        # Isotonic calibration — better than sigmoid for multi-class
+        # Isotonic over sigmoid: it calibrates multi-class better.
         clf = CalibratedClassifierCV(hgb, cv=3, method="isotonic")
     else:
         clf = hgb
 
-    # HistGBM handles NaN natively, so no imputer step needed
+    # No imputer: HistGBM handles NaN natively.
     return Pipeline([("clf", clf)])
 
 
@@ -70,9 +49,6 @@ def _try_lightgbm(
     min_child_samples: int = 20,
     calibrate: bool = True,
 ) -> Pipeline:
-    """
-    LightGBM classifier if the package is installed; falls back to HGB otherwise.
-    """
     try:
         if LGBMClassifier is None:
             raise ImportError
@@ -96,8 +72,7 @@ def _try_lightgbm(
         return make_hgb_pipeline(calibrate=calibrate)
 
 
-# Sensible XGBoost defaults (pre-tuning). Phase 3 overrides these with the
-# Optuna-tuned params persisted at ml/artifacts/best_xgb_params.json.
+# Pre-tuning defaults; Optuna params in ml/artifacts/best_xgb_params.json override them when present.
 XGB_DEFAULTS = {
     "eval_metric": "mlogloss",
     "use_label_encoder": False,
@@ -112,14 +87,6 @@ XGB_DEFAULTS = {
 
 
 def make_best_boosting_pipeline(calibrate: bool = True) -> Pipeline:
-    """
-    Return the best available boosting pipeline.
-
-    Primary: XGBoost (XGBClassifier). If ml/artifacts/best_xgb_params.json
-    exists (written by ml.pipeline.tune_match_model), those tuned params are
-    merged over XGB_DEFAULTS. Falls back to HistGradientBoosting when xgboost
-    is not installed.
-    """
     try:
         from xgboost import XGBClassifier
     except ImportError:
@@ -131,7 +98,7 @@ def make_best_boosting_pipeline(calibrate: bool = True) -> Pipeline:
     if tuned_path.exists():
         tuned = json.loads(tuned_path.read_text())
         params.update(tuned)
-        # Always keep the invariant, reproducibility, and label-encoder flags.
+        # A tuned file must never override these.
         params.update({
             "eval_metric": "mlogloss",
             "use_label_encoder": False,

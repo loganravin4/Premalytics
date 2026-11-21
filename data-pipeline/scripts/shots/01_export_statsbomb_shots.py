@@ -1,28 +1,6 @@
-"""
-01_export_statsbomb_shots.py — XG-05/XG-06 shot-level ingest.
+"""Export non-penalty StatsBomb international shots to the shot contract (docs/DATA_CONTRACT_SHOTS.md), one CSV per tournament.
 
-Pulls non-penalty shot events for every international competition in
-StatsBomb open data (see soccer/statsbomb_open.py COMPETITIONS: WC 2018/2022,
-Euro 2020/2024, Copa América 2024, AFCON 2023, the historic WC matches, and
-the women's World Cups and Euros) and writes them to the shot contract
-(docs/DATA_CONTRACT_SHOTS.md).
-
-Every feature column describes the moment the ball is struck: shot location,
-body part, technique, first-time flag, pressure, assist type, and the
-freeze-frame snapshot (defenders in the shooting cone, nearest defender,
-goalkeeper position). Post-shot information (end location, outcome detail,
-StatsBomb's own xG) never becomes a feature; StatsBomb xG is kept only as the
-`sb_xg_benchmark` metadata column for model comparison.
-
-Events are read through a gzip cache (data-pipeline/data/raw/statsbomb_cache/),
-so re-runs are offline.
-
-Output (one CSV per tournament):
-  data-pipeline/data/raw/shots/{slug}_shots_{season}.csv
-  e.g. wc_shots_2022.csv, euro_shots_2024.csv, wwc_shots_2023.csv
-
-Usage:
-  python data-pipeline/scripts/shots/01_export_statsbomb_shots.py [--dry-run] [--only KEY ...]
+Usage: python data-pipeline/scripts/shots/01_export_statsbomb_shots.py [--dry-run] [--only KEY ...]
 """
 
 from __future__ import annotations
@@ -103,14 +81,10 @@ POSITION_MAP = {
     "Left Center Forward": "ST", "Secondary Striker": "ST",
 }
 
-# Set-piece play patterns. Throw-in / goal-kick / keeper-distribution
-# possessions are open play, so only corner and free-kick origins count.
+# Throw-in, goal-kick, and keeper-distribution possessions count as open play
 SET_PIECE_PATTERNS = {"From Corner", "From Free Kick"}
 
 
-# ---------------------------------------------------------------------------
-# Geometry helpers (all inputs in StatsBomb yards)
-# ---------------------------------------------------------------------------
 
 def distance_angle(location: list) -> tuple[float, float]:
     x, y = float(location[0]), float(location[1])
@@ -134,11 +108,7 @@ def in_shooting_cone(point, shooter) -> bool:
 
 
 def freeze_frame_features(freeze_frame: list | None, shooter: list) -> dict:
-    """
-    Defender and keeper context from the shot's freeze frame (the positions of
-    visible players at the moment of the strike). Missing frame -> NaN features
-    and ff_available=False.
-    """
+    """Defender and keeper positions at the moment of the strike; NaN features and ff_available=False without a frame."""
     empty = {
         "ff_available": False, "n_def_in_cone": float("nan"), "nearest_def_m": float("nan"),
         "gk_dist_to_goal_m": float("nan"), "gk_dist_to_shooter_m": float("nan"),
@@ -168,8 +138,7 @@ def freeze_frame_features(freeze_frame: list | None, shooter: list) -> dict:
         kx, ky = float(keeper["location"][0]), float(keeper["location"][1])
         feats["gk_dist_to_goal_m"] = round(math.hypot(GOAL_X - kx, GOAL_Y - ky) * YARDS_TO_M, 2)
         feats["gk_dist_to_shooter_m"] = round(math.hypot(kx - sx, ky - sy) * YARDS_TO_M, 2)
-        # Angle between shooter->goal-center and shooter->keeper: 0 = keeper
-        # square on the shot line, larger = keeper off the line of the shot.
+        # 0 means the keeper is square on the shot line
         a_goal = math.atan2(GOAL_Y - sy, GOAL_X - sx)
         a_gk = math.atan2(ky - sy, kx - sx)
         diff = abs(math.degrees(a_gk - a_goal)) % 360
@@ -177,9 +146,6 @@ def freeze_frame_features(freeze_frame: list | None, shooter: list) -> dict:
     return feats
 
 
-# ---------------------------------------------------------------------------
-# Event mapping helpers
-# ---------------------------------------------------------------------------
 
 def situation_of(shot: dict, play_pattern: str | None) -> str:
     st = shot.get("type", {}).get("name")
@@ -221,7 +187,7 @@ def resolve_team(mapper: TeamMapper, name: str, unmapped: set) -> str:
 
 def shots_from_match(events: list[dict], ctx: dict, mapper: TeamMapper,
                      unmapped: set, stats: dict) -> list[dict]:
-    """Extract contract rows from one match's events. Mutates stats/unmapped."""
+    """Extract contract rows from one match's events, updating stats and unmapped in place."""
     event_index = {e["id"]: e for e in events if "id" in e}
     rows = []
 
@@ -233,7 +199,8 @@ def shots_from_match(events: list[dict], ctx: dict, mapper: TeamMapper,
         if shot.get("type", {}).get("name") == "Penalty":
             stats["penalties_filtered"] += 1
             continue
-        if ev.get("period") == 5:  # shootout kicks are penalties too
+        # Shootout kicks are penalties too
+        if ev.get("period") == 5:
             stats["penalties_filtered"] += 1
             continue
         outcome = shot.get("outcome", {}).get("name")
@@ -276,6 +243,7 @@ def shots_from_match(events: list[dict], ctx: dict, mapper: TeamMapper,
             "assist_type": assist_type_of(shot, event_index),
             "is_goal": outcome == "Goal",
             "is_penalty": False,
+            # Benchmark only: StatsBomb xG is post-shot information, never a feature
             "sb_xg_benchmark": shot.get("statsbomb_xg"),
         }
         row.update(freeze_frame_features(shot.get("freeze_frame"), loc))
@@ -283,9 +251,6 @@ def shots_from_match(events: list[dict], ctx: dict, mapper: TeamMapper,
     return rows
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def export_competition(comp: Competition, mapper: TeamMapper, dry_run: bool) -> None:
     out_path = OUT_DIR / f"{comp.file_slug}_shots_{comp.season_id}.csv"

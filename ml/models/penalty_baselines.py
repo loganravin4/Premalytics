@@ -1,24 +1,6 @@
 """
-Penalty baselines (PEN-03).
-
-Two kinds of output, kept apart on purpose:
-
-1. Descriptive conversion tables (post-kick slices). Conversion by placement
-   zone or foot x side is computed from where the ball went, which is only
-   known after the kick. These describe what happened; they are not a
-   prediction for a future kick. They feed penalty_aggregates.json.
-
-2. Pre-kick predictors, scored with rolling-origin evaluation in
-   ml/pipeline/evaluate_penalties.py. Inputs are known before the run-up:
-   phase, taker foot, shootout order and pressure, game state, gender.
-     constant          training conversion rate
-     phase_rate        rate by phase (in-game vs shootout), shrunk to overall
-     pressure_rate     rate by phase x pressure/game state, shrunk to overall
-     logistic_prekick  L2 logistic on the pre-kick features
-     gbm_prekick       shallow GBM on the same features (optional per PEN-01)
-
-See docs/PENALTY_LABEL_SPEC.md for which columns are pre-kick and
-docs/PENALTY_LIMITATIONS.md for what these numbers cannot say.
+Penalty baselines: descriptive conversion tables and pre-kick predictors, kept apart on purpose.
+The tables slice by where the ball went, known only after the kick, so they describe and never predict.
 """
 
 from __future__ import annotations
@@ -35,8 +17,9 @@ from sklearn.preprocessing import OneHotEncoder
 
 from ml.config import RANDOM_SEED
 
-ZONE_ROWS = ["high", "mid", "low"]          # top to bottom
-ZONE_COLS = ["left", "center", "right"]     # taker's view
+ZONE_ROWS = ["high", "mid", "low"]
+# Left and right are from the taker's view, not the keeper's.
+ZONE_COLS = ["left", "center", "right"]
 ZONES = [f"{r}_{c}" for r in ZONE_ROWS for c in ZONE_COLS]
 
 # Columns known before the kick. Everything else in the CSV is post-kick or an id.
@@ -50,8 +33,9 @@ POSTKICK_COLUMNS = {
     "placement_zone", "foot_side", "keeper_technique", "keeper_set",
 }
 
-SHRINK_K = 20.0     # pseudo-count pulling small groups toward the overall rate
-MIN_DISPLAY_N = 20  # below this, aggregates are flagged low_sample
+# Pseudo-count pulling small groups toward the overall rate.
+SHRINK_K = 20.0
+MIN_DISPLAY_N = 20
 
 
 def wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -72,7 +56,6 @@ def order_bucket(team_kick_number) -> str:
 
 
 def add_prekick_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Derived pre-kick columns: pressure_bucket, order_bucket, is_womens."""
     out = df.copy()
     out["is_womens"] = (out["competition_gender"] == "female").astype(int)
     out["order_bucket"] = out["team_kick_number"].map(order_bucket)
@@ -85,12 +68,7 @@ def add_prekick_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Descriptive tables
-# ---------------------------------------------------------------------------
-
 def conversion_table(df: pd.DataFrame, by: list[str], total: int | None = None) -> list[dict]:
-    """Conversion (goals / kicks) per group with Wilson 95% intervals."""
     total = total if total is not None else len(df)
     rows = []
     for keys, g in df.groupby(by, dropna=True, observed=True):
@@ -109,7 +87,6 @@ def conversion_table(df: pd.DataFrame, by: list[str], total: int | None = None) 
 
 
 def zone_grid(df: pd.DataFrame) -> dict:
-    """3x3 goal-mouth grid (taker's view) with share, conversion, and miss/save split."""
     total = len(df)
     cells = []
     for r in ZONE_ROWS:
@@ -133,7 +110,7 @@ def zone_grid(df: pd.DataFrame) -> dict:
 
 
 def shootout_summary(df: pd.DataFrame) -> dict:
-    """Shootout-level counts: how many, and how often the team kicking first won."""
+    """How often the team kicking first won a decided shootout."""
     so = df[df["phase"] == "shootout"]
     n_shootouts, first_won = 0, 0
     for _, g in so.groupby("match_id"):
@@ -150,10 +127,6 @@ def shootout_summary(df: pd.DataFrame) -> dict:
             "first_kicker_win_rate": round(first_won / n_shootouts, 4) if n_shootouts else None,
             "ci95": [round(lo, 4), round(hi, 4)]}
 
-
-# ---------------------------------------------------------------------------
-# Pre-kick predictors
-# ---------------------------------------------------------------------------
 
 class ConstantRate:
     name = "constant"

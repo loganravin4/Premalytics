@@ -1,22 +1,6 @@
-"""
-Score-model training pipeline.
+"""Train the home and away Poisson goal models for scoreline prediction, split on TRAIN_CUTOFF_DATE.
 
-Fits two independent Poisson regressions on the pivoted WC feature matrix:
-  home_goals model -> target goals_for   (home team goals)
-  away_goals model -> target goals_against (away team goals)
-
-Chronological split on the same TRAIN_CUTOFF_DATE as the match predictor.
-If the xG rolling features are entirely null/zero in the training window the
-models fall back to goal-average features only.
-
-Artifacts -> ml/artifacts/score_{run_ts}/ :
-    home_goals.joblib, away_goals.joblib,
-    score_features.joblib      (pivoted matrix, for predict_scores lookups)
-    score_feature_cols.json    ({use_xg, features})
-and a pointer in ml/artifacts/latest_score_run.txt.
-
-Usage:
-    python -m ml.pipeline.train_scores
+Usage: python -m ml.pipeline.train_scores
 """
 
 import json
@@ -42,12 +26,12 @@ logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 np.random.seed(RANDOM_SEED)
 
-HOME_TARGET = "goals_for"       # home team goals (home-perspective pivot row)
-AWAY_TARGET = "goals_against"   # away team goals
+# The pivot row is home-perspective, so goals_for is home goals and goals_against is away goals.
+HOME_TARGET = "goals_for"
+AWAY_TARGET = "goals_against"
 
 
 def load_score_features() -> pd.DataFrame:
-    """Pivoted single-row match matrix with both goal targets present."""
     raw = load_raw_matches(COMPETITIONS_TRAIN)
     validate_data_contract(raw)
     feats = build_features(raw)
@@ -55,7 +39,7 @@ def load_score_features() -> pd.DataFrame:
 
 
 def _detect_use_xg(train_df: pd.DataFrame) -> bool:
-    """True iff any xG rolling feature is present and non-zero in the train split."""
+    """True iff any xG rolling feature is non-zero in the train split; otherwise fall back to goal averages."""
     xg = train_df.reindex(columns=XG_NUMERIC)
     vals = pd.to_numeric(xg.stack(), errors="coerce") if len(xg.columns) else pd.Series(dtype=float)
     return bool(vals.notna().any() and (vals.fillna(0.0) != 0.0).any())

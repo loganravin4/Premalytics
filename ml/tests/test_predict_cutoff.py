@@ -20,7 +20,8 @@ def _features():
 
 def test_latest_vector_respects_cutoff():
     f = _features()
-    assert _team_latest_vector(f, COLS, "ARG")["elo"] == 2100.0          # no cutoff: final
+    # Without a cutoff, the final's rating is used
+    assert _team_latest_vector(f, COLS, "ARG")["elo"] == 2100.0
     assert _team_latest_vector(f, COLS, "ARG", pd.Timestamp("2026-06-15"))["elo"] == 2000.0
     assert _team_latest_vector(f, COLS, "ARG", pd.Timestamp("2026-06-01")) == {}
 
@@ -31,4 +32,5 @@ def test_fixture_cutoffs_use_match_date_capped_by_as_of():
     assert fixture_cutoffs(fx) == [pd.Timestamp("2026-06-15"), pd.Timestamp("2026-07-19")]
     assert fixture_cutoffs(fx, "2026-06-11") == [pd.Timestamp("2026-06-11")] * 2
     row = _fixture_feature_row(_features(), COLS, "ESP", "ARG", pd.Timestamp("2026-07-19"))
-    assert row["away_elo"] == 2030.0          # ARG's row before the final, not the final
+    # ARG's row before the final, not the final itself
+    assert row["away_elo"] == 2030.0

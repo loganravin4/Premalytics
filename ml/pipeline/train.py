@@ -1,16 +1,6 @@
-"""
-WC-06 training pipeline.
+"""Train the logistic baseline and the gradient-boosting match model, split chronologically on TRAIN_CUTOFF_DATE.
 
-Loads FIFA World Cup match data, builds leakage-safe features, splits
-chronologically on TRAIN_CUTOFF_DATE (WC 2018 = train, WC 2022 = eval),
-and fits a logistic-regression baseline and a gradient-boosting model.
-
-Both fitted models, the pivoted feature matrix, and the feature-column
-list are saved under ml/artifacts/{run_timestamp}/. A pointer to the run
-is written to ml/artifacts/latest_run.txt.
-
-Usage:
-    python -m ml.pipeline.train
+Usage: python -m ml.pipeline.train
 """
 
 import json
@@ -37,10 +27,7 @@ logger = logging.getLogger(__name__)
 np.random.seed(RANDOM_SEED)
 
 
-# Columns that must never be fed to sklearn: string metadata, identifiers,
-# the target, the split key, and row weights. Listed explicitly (per WC-06)
-# rather than trusting get_feature_columns() to return a clean set. The
-# remaining selection also filters to numeric dtypes as a backstop.
+# Listed explicitly rather than trusting get_feature_columns() to return a clean set.
 NON_FEATURE_COLS = [
     "home_competition_id", "home_competition_stage", "home_group_name",
     "home_source", "home_source_match_key",
@@ -48,29 +35,17 @@ NON_FEATURE_COLS = [
     "away_source", "away_source_match_key",
     "match_id", "season_id", "home_team", "away_team", "venue",
     "match_outcome", "match_date",
-    # Sample weights are row weights, not predictive features.
     "home_sample_weight", "away_sample_weight",
-    # Raw categorical confederation columns — replaced by one-hot dummies below.
     "home_confederation", "away_confederation",
 ]
 
-# Fixed confederation vocabulary (DATA_CONTRACT.md team_map values + OTHER
-# fallback). A FIXED category set guarantees select_feature_columns() emits the
-# identical dummy columns for train, eval, and any future data — no column
-# drift between splits.
+# Fixed so train, eval and future data always get identical dummy columns.
 CONFEDERATIONS = ["UEFA", "CONMEBOL", "CONCACAF", "CAF", "AFC", "OFC", "OTHER"]
 CONFEDERATION_COLS = ["home_confederation", "away_confederation"]
 
 
 def _one_hot_confederation(features: pd.DataFrame) -> list[str]:
-    """
-    One-hot encode home_/away_confederation IN PLACE using the fixed
-    CONFEDERATIONS vocabulary, returning the dummy column names added.
-
-    Mutating `features` (rather than returning a new frame) means the columns
-    are present on every downstream slice — train_df, eval_df, and the
-    features.joblib persisted for predict.py.
-    """
+    # Mutates in place so the dummies reach train_df, eval_df and the features.joblib predict.py reads.
     added: list[str] = []
     for col in CONFEDERATION_COLS:
         if col not in features.columns:
@@ -86,51 +61,28 @@ def _one_hot_confederation(features: pd.DataFrame) -> list[str]:
 
 
 def select_feature_columns(features: pd.DataFrame) -> list[str]:
-    """
-    Numeric model-feature columns only.
-
-    One-hot encodes the categorical confederation columns in place, then starts
-    from the home_/away_/diff_ prefixed candidates, drops the known metadata
-    columns by name, and keeps only numeric dtypes so no object column can ever
-    reach sklearn.
-    """
+    """Numeric model-feature columns; also one-hot encodes confederation in place."""
     _one_hot_confederation(features)
     candidates = [c for c in get_feature_columns(features) if c not in NON_FEATURE_COLS]
+    # Numeric-only backstop so no object column can reach sklearn.
     return [c for c in candidates if pd.api.types.is_numeric_dtype(features[c])]
 
 
 def build_xy(features: pd.DataFrame, feature_cols: list[str]):
-    """
-    Return (X, y, weights).
-
-    X: numeric feature matrix with every remaining NaN filled to 0. For WC
-       data this is correct — NULL xG/shots and no-prior-history rolling
-       stats are genuine "no information" cases, not missing measurements.
-    y: match_outcome encoded via TARGET_ENCODE (H=2, D=1, A=0).
-    weights: per-row training weights from TOURNAMENT_WEIGHTS keyed on
-       home_competition_id (Euro/Copa 1.5, WC 1.0, friendly 0.3, etc.).
-       TOURNAMENT_WEIGHTS is the single source of truth — the baked
-       home_sample_weight column is ignored. Competitions absent from
-       TOURNAMENT_WEIGHTS fall back to 1.0.
-    """
+    """Return (X, y, weights)."""
+    # NaN here means no prior history or no xG data, i.e. genuinely no information, so 0 is correct.
     X = features[feature_cols].fillna(0.0).astype(float)
     y = features[TARGET_COL].map(TARGET_ENCODE)
 
     if "home_sample_weight" in features.columns:
         weights = pd.to_numeric(features["home_sample_weight"], errors="coerce")
-        # Per-row fallback: any missing weight defaults to 1.0 (never drop a row).
         weights = weights.fillna(1.0).astype(float)
-        if (weights <= 0).all():  # degenerate column — treat as unweighted
+        if (weights <= 0).all():
             weights = pd.Series(1.0, index=features.index)
     else:
         weights = pd.Series(1.0, index=features.index)
 
-    # TOURNAMENT_WEIGHTS is the single source of truth for per-competition
-    # training weights: each row's weight is its competition's configured value
-    # (Euro/Copa 1.5, WC 1.0, friendly 0.3, ...), overriding the baked
-    # home_sample_weight column entirely. home_competition_id is metadata
-    # excluded from X but still present here; competitions absent from
-    # TOURNAMENT_WEIGHTS fall back to 1.0.
+    # TOURNAMENT_WEIGHTS is the single source of truth and overrides the baked home_sample_weight.
     if "home_competition_id" in features.columns:
         weights = (
             features["home_competition_id"].map(TOURNAMENT_WEIGHTS).fillna(1.0).astype(float)
@@ -144,7 +96,6 @@ def build_xy(features: pd.DataFrame, feature_cols: list[str]):
 
 
 def load_wc_features() -> pd.DataFrame:
-    """Load WC data and build the single-row-per-match feature matrix."""
     raw = load_raw_matches(COMPETITIONS_TRAIN)
     validate_data_contract(raw)
     features = build_features(raw)
@@ -152,7 +103,7 @@ def load_wc_features() -> pd.DataFrame:
 
 
 def split_train_eval(features: pd.DataFrame):
-    """Chronological split on TRAIN_CUTOFF_DATE (no shuffle)."""
+    # Chronological, never shuffled, so eval matches are all after every training match.
     cutoff = pd.Timestamp(TRAIN_CUTOFF_DATE)
     train = features[features["match_date"] < cutoff]
     eval_ = features[features["match_date"] >= cutoff]
@@ -179,9 +130,6 @@ def main() -> None:
         f"min={w_train.min():.3f}  max={w_train.max():.3f}"
     )
 
-    # Both factories already exist in ml/models/ — used as-is. Per-row training
-    # weights are routed to each pipeline's final 'clf' step (LogisticRegression
-    # and CalibratedClassifierCV both accept sample_weight).
     models = {
         "logistic_regression": make_logistic_pipeline(),
         "gradient_boosting":   make_best_boosting_pipeline(),
@@ -193,8 +141,7 @@ def main() -> None:
         joblib.dump(model, model_path)
         logger.info(f"Saved {name} -> {model_path}")
 
-    # Persist the feature order and the pivoted matrix so evaluate.py and
-    # predict.py reproduce the exact same X / look up team form.
+    # evaluate.py and predict.py need the exact column order and the matrix to look up team form.
     (run_dir / "feature_cols.json").write_text(json.dumps(feature_cols, indent=2))
     joblib.dump(features, run_dir / "features.joblib")
 

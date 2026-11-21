@@ -1,20 +1,6 @@
 """
-Probabilistic metrics for ordered W/D/L forecasts (ML-02).
-
-Every function takes probabilities as an (n, 3) array in OUTCOME order
-[home, draw, away] and outcomes as integer indices into that order
-(0 = home win, 1 = draw, 2 = away win). Use `from_model_proba` to convert
-sklearn predict_proba output (columns in TARGET_ENCODE order A=0, D=1, H=2).
-
-  rps          Ranked Probability Score, the standard for ordered outcomes.
-  brier        Multi-class Brier score (sum over the 3 classes, range 0-2).
-  log_loss     Mean natural-log loss, clipped at 1e-15.
-  reliability  Per-class decile bins: mean predicted vs observed frequency.
-
-Shootout crediting: a knockout match level after extra time is a draw on goals
-but someone advances. `credit_shootouts` moves the draw mass onto the two teams
-in proportion to their win probabilities and relabels the outcome to the team
-that advanced, so raw and credited numbers can always be reported side by side.
+Probabilistic metrics for W/D/L forecasts.
+Probabilities are (n, 3) in outcome order [home, draw, away]; convert sklearn predict_proba with from_model_proba.
 """
 
 from __future__ import annotations
@@ -27,12 +13,10 @@ EPS = 1e-15
 
 # predict_proba column order is sorted TARGET_ENCODE values: A=0, D=1, H=2.
 _MODEL_TO_OUTCOME = [2, 1, 0]
-# match_outcome label -> outcome index
 LABEL_TO_OUTCOME = {"H": HOME, "D": DRAW, "A": AWAY}
 
 
 def from_model_proba(proba: np.ndarray) -> np.ndarray:
-    """sklearn proba (cols A, D, H) -> outcome order (home, draw, away)."""
     return np.asarray(proba, dtype=float)[:, _MODEL_TO_OUTCOME]
 
 
@@ -51,7 +35,6 @@ def _onehot(y: np.ndarray) -> np.ndarray:
 
 
 def rps(p: np.ndarray, y: np.ndarray) -> float:
-    """Mean RPS: 1/(K-1) * sum_k (cum_p_k - cum_o_k)^2 over the first K-1 cumulatives."""
     p = normalize(p)
     o = _onehot(y)
     cp, co = np.cumsum(p, axis=1)[:, :2], np.cumsum(o, axis=1)[:, :2]
@@ -74,7 +57,6 @@ def accuracy(p: np.ndarray, y: np.ndarray) -> float:
 
 
 def draw_recall(p: np.ndarray, y: np.ndarray) -> float:
-    """Share of actual draws the argmax pick called as a draw (nan if none)."""
     y = np.asarray(y, dtype=int)
     mask = y == DRAW
     if not mask.any():
@@ -83,11 +65,6 @@ def draw_recall(p: np.ndarray, y: np.ndarray) -> float:
 
 
 def reliability(p: np.ndarray, y: np.ndarray, n_bins: int = 10) -> dict:
-    """
-    Per-class equal-width bins on [0, 1]. Each bin: n, mean predicted
-    probability, observed frequency, abs gap. `ece` is the count-weighted
-    mean abs gap for that class.
-    """
     p = normalize(p)
     o = _onehot(y)
     edges = np.linspace(0.0, 1.0, n_bins + 1)
@@ -114,15 +91,7 @@ def reliability(p: np.ndarray, y: np.ndarray, n_bins: int = 10) -> dict:
 
 def credit_shootouts(p: np.ndarray, y: np.ndarray, knockout: np.ndarray,
                      shootout_winner_is_home: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Shootout-credited view of (p, y).
-
-    knockout: bool mask of matches that cannot end level (draw mass is moved
-        onto the two teams in proportion to p_home / p_away).
-    shootout_winner_is_home: float array, 1.0 / 0.0 for matches decided on
-        penalties (home / away advanced), nan otherwise. Those matches are
-        relabeled to the team that advanced.
-    """
+    """Moves draw mass in knockouts onto the two teams and relabels shootouts to the team that advanced."""
     p = normalize(p).copy()
     y = np.asarray(y, dtype=int).copy()
     knockout = np.asarray(knockout, dtype=bool)
@@ -142,7 +111,6 @@ def credit_shootouts(p: np.ndarray, y: np.ndarray, knockout: np.ndarray,
 
 
 def score(p: np.ndarray, y: np.ndarray, with_reliability: bool = False) -> dict:
-    """All headline metrics for one (p, y) set."""
     y = np.asarray(y, dtype=int)
     out = {
         "n": int(len(y)),
@@ -161,7 +129,6 @@ def score(p: np.ndarray, y: np.ndarray, with_reliability: bool = False) -> dict:
 
 def score_raw_and_credited(p, y, knockout, shootout_winner_is_home,
                            with_reliability: bool = False) -> dict:
-    """Raw (goals-based) and shootout-credited metrics, side by side."""
     raw = score(p, y, with_reliability=with_reliability)
     pc, yc = credit_shootouts(p, y, knockout, shootout_winner_is_home)
     cred = score(pc, yc)

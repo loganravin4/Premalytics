@@ -1,14 +1,6 @@
 """
 Leakage-safe feature engineering for match outcome prediction.
-
-For every match on date T:
-  - Team rolling stats use ONLY matches played strictly before T.
-  - No post-match information (shots/xG from the match itself) is used.
-  - Features are computed from the dual-row DataFrame, then pivoted to
-    single-row-per-match (home team vs away team) for model training.
-
-Leakage check: features for match i are derived from df.iloc[:i] only
-               (time-sorted), guaranteed by the shift(1) pattern.
+Every feature for a match on date T uses only matches strictly before T (the shift(1) pattern), then dual rows pivot to one row per match.
 """
 
 import logging
@@ -24,11 +16,8 @@ from ml.config import (
 
 logger = logging.getLogger(__name__)
 
-# Static mapping of FIFA team_id -> confederation, loaded once from
-# team_map_intl.csv. Any team_id absent from the map defaults to "OTHER".
 TEAM_MAP_CSV = STATIC_DIR / "team_map_intl.csv"
 
-# API-Football possession stats (PHASE 5) live under one CSV per comp/season.
 API_FOOTBALL_DIR = DATA_DIR / "api_football"
 
 
@@ -50,11 +39,6 @@ def _load_team_code_map() -> dict[str, str]:
 
 
 def _load_possession() -> pd.DataFrame:
-    """
-    Concatenate every api_football/*/*/possession_stats.csv, mapping provider
-    team names to FIFA codes. Returns columns [_dstr, team_id, possession_pct,
-    passes_accuracy], one row per (date, team). Empty frame if none on disk.
-    """
     cols = ["_dstr", "team_id", "possession_pct", "passes_accuracy"]
     if not API_FOOTBALL_DIR.exists():
         return pd.DataFrame(columns=cols)
@@ -79,7 +63,6 @@ def _load_possession() -> pd.DataFrame:
 
 
 def _load_confederation_map() -> dict[str, str]:
-    """team_id -> confederation (UEFA/CONMEBOL/CONCACAF/CAF/AFC/OFC)."""
     if not TEAM_MAP_CSV.exists():
         logger.warning("team_map_intl.csv not found at %s — confederation "
                        "defaults to OTHER for all teams", TEAM_MAP_CSV)
@@ -94,31 +77,18 @@ def _load_confederation_map() -> dict[str, str]:
     return mapping
 
 
-# ---------------------------------------------------------------------------
-# Single-team rolling features
-# ---------------------------------------------------------------------------
-
 def _compute_team_rolling(team_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Given a DataFrame for ONE team (all matches, sorted by date),
-    compute rolling statistics using only past matches (shift(1) = exclude current).
-
-    Returns the same DataFrame with new feature columns added.
-    """
     df = team_df.sort_values("match_date").copy()
 
-    # Points per match (W=3, D=1, L=0)
     df["_pts"] = df["result"].map({"W": 3, "D": 1, "L": 0})
 
-    # Win indicator
     df["_win"] = (df["result"] == "W").astype(float)
 
-    # For each rolling window, compute past-N rolling stats
     for N in ROLLING_WINDOWS:
         mp = MIN_MATCHES_REQUIRED
         suffix = f"_{N}"
 
-        # Shift(1) so the current match is NOT included in its own feature
+        # shift(1) keeps the current match out of its own feature.
         df[f"form_pts{suffix}"]  = df["_pts"].shift(1).rolling(N, min_periods=mp).mean()
         df[f"form_win{suffix}"]  = df["_win"].shift(1).rolling(N, min_periods=mp).mean()
         df[f"gf_avg{suffix}"]    = df["goals_for"].shift(1).rolling(N, min_periods=mp).mean()
@@ -139,7 +109,6 @@ def _compute_team_rolling(team_df: pd.DataFrame) -> pd.DataFrame:
         if "corners_for" in df.columns:
             df[f"corners_avg{suffix}"]   = df["corners_for"].shift(1).rolling(N, min_periods=mp).mean()
 
-    # Cumulative season points rate (points / matches played so far)
     df["_season_pts_cum"] = df.groupby("season_id")["_pts"].transform(
         lambda s: s.shift(1).expanding().sum()
     )
@@ -148,11 +117,9 @@ def _compute_team_rolling(team_df: pd.DataFrame) -> pd.DataFrame:
     )
     df["season_pts_rate"] = df["_season_pts_cum"] / df["_season_matches"].replace(0, np.nan)
 
-    # Rest days since last match (within any season)
     df["rest_days"] = df["match_date"].diff().dt.days
 
-    # Home-specific rolling form (last 5 home matches)
-    # Named with 'at_home_' prefix to avoid collision when pivot renames features
+    # at_home_ avoids colliding with the home_ prefix the pivot adds.
     home_mask = df["venue"] == "Home"
     df["_home_win"] = np.where(home_mask, df["_win"], np.nan)
     df["at_home_win_rate_5"] = (
@@ -162,7 +129,6 @@ def _compute_team_rolling(team_df: pd.DataFrame) -> pd.DataFrame:
         .mean()
     )
 
-    # Away-specific rolling form (last 5 away matches)
     away_mask = df["venue"] == "Away"
     df["_away_win"] = np.where(away_mask, df["_win"], np.nan)
     df["at_away_win_rate_5"] = (
@@ -172,25 +138,13 @@ def _compute_team_rolling(team_df: pd.DataFrame) -> pd.DataFrame:
         .mean()
     )
 
-    # Drop internal columns
     drop_cols = [c for c in df.columns if c.startswith("_")]
     df = df.drop(columns=drop_cols)
 
     return df
 
 
-# ---------------------------------------------------------------------------
-# Head-to-head features
-# ---------------------------------------------------------------------------
-
 def _compute_h2h(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    For each match, compute head-to-head win rate from the HOME team's perspective
-    across the last 3 and 5 previous meetings between the two teams.
-
-    Uses only matches strictly before the current date.
-    Operates on the full (dual-row) dataset.
-    """
     df = df.sort_values("match_date").reset_index(drop=True)
 
     h2h_win_3 = []
@@ -204,7 +158,7 @@ def _compute_h2h(df: pd.DataFrame) -> pd.DataFrame:
         opponent = row["opponent_id"]
         date     = row["match_date"]
 
-        # Past meetings from team's perspective (strictly before this match's date)
+        # Strictly earlier dates, so the match itself and same-day results never leak in.
         past = df[
             (df["team_id"] == team) &
             (df["opponent_id"] == opponent) &
@@ -213,19 +167,16 @@ def _compute_h2h(df: pd.DataFrame) -> pd.DataFrame:
 
         has_history = len(past) >= 1
         wins = (past["result"] == "W").astype(float)
-        # Last-5 slice reused for the draw / away-win / total-goals stats.
         last5 = past.tail(5)
 
         h2h_win_3.append(wins.tail(3).mean() if has_history else np.nan)
         h2h_win_5.append(wins.tail(5).mean() if has_history else np.nan)
 
-        # Draw rate and away (opponent) win rate over the last 5 meetings, all
-        # from this row's (home) perspective: result L means the opponent won.
+        # From this row's perspective, L means the opponent won.
         h2h_draws_5.append(
             (last5["result"] == "D").astype(float).mean() if has_history else np.nan)
         h2h_away_wins_5.append(
             (last5["result"] == "L").astype(float).mean() if has_history else np.nan)
-        # Average combined goals (both teams) — a scoreline-tempo signal.
         h2h_total_goals_avg_5.append(
             (last5["goals_for"] + last5["goals_against"]).mean() if has_history else np.nan)
 
@@ -237,45 +188,24 @@ def _compute_h2h(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# ELO ratings
-# ---------------------------------------------------------------------------
-
 def compute_elo_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Attach a pre-match ELO rating to every row in the dual-row DataFrame.
-
-    Temporal safety guarantees:
-      - ELO for match T reflects only results from matches strictly before T.
-      - Same-day matches all receive start-of-day ELOs; the ordering of matches
-        within a single date cannot introduce leakage.
-      - ELO carries across seasons (intentional — team quality is persistent).
-
-    Formula:
-        E_home = 1 / (1 + 10^((elo_away - elo_home) / 400))
-        new_elo = elo + K * (actual - E)
-        actual: W=1.0, D=0.5, L=0.0
-
-    K is competition-aware (config.K_FACTORS): a World Cup result moves ratings
-    far more than a friendly. Rows whose competition_id is absent/unmapped fall
-    back to config.ELO_K_FACTOR.
-    """
+    """Attaches each team's pre-match ELO to every row of the dual-row frame."""
     df = df.copy()
 
-    elos: dict = {}                 # team_id → current ELO (updated after each match)
-    pre_match_elo: dict = {}        # (match_id, team_id) → ELO before this match
+    # Never reset between seasons: team quality persists.
+    elos: dict = {}
+    pre_match_elo: dict = {}
 
     for date, day_df in df.sort_values(["match_date", "match_id"]).groupby("match_date"):
-        # Step 1: snapshot every team's ELO at the start of this date
+        # Start-of-day snapshot, so the order of same-day matches can't leak results.
         snapshot: dict = {}
         for team in day_df["team_id"].unique():
             snapshot[team] = elos.get(team, ELO_INITIAL)
 
-        # Step 2: record pre-match ELO for all rows today
         for mid, tid in zip(day_df["match_id"], day_df["team_id"]):
             pre_match_elo[(mid, tid)] = snapshot[tid]
 
-        # Step 3: update ELOs using home-team rows (each physical match processed once)
+        # Home rows only, so each physical match updates once.
         for _, row in day_df[day_df["venue"] == "Home"].iterrows():
             home_team = row["team_id"]
             away_team = row["opponent_id"]
@@ -292,7 +222,6 @@ def compute_elo_features(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 actual_home = 0.0
 
-            # Competition-aware K (friendly=15 ... world_cup=60); fallback 20.
             k = K_FACTORS.get(row.get("competition_id"), ELO_K_FACTOR)
             elos[home_team] = h_elo + k * (actual_home - expected_home)
             elos[away_team] = a_elo + k * ((1.0 - actual_home) - (1.0 - expected_home))
@@ -304,17 +233,7 @@ def compute_elo_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# Opponent-relative differential features (post-pivot)
-# ---------------------------------------------------------------------------
-
 def _add_diff_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add home-minus-away differential features to the single-row-per-match DataFrame.
-
-    All inputs are derived from already-leakage-safe per-team features, so no
-    additional temporal constraints are introduced here.
-    """
     diff_bases = [
         "form_pts_3", "form_pts_5", "form_pts_10",
         "form_win_5",
@@ -332,17 +251,7 @@ def _add_diff_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# Main feature builder
-# ---------------------------------------------------------------------------
-
 def build_team_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Compute per-team rolling features for every match row.
-
-    Returns the same dual-row DataFrame enriched with feature columns.
-    Each row's features reflect the team's historical stats BEFORE this match.
-    """
     logger.info("Computing team rolling features...")
 
     parts = []
@@ -352,18 +261,13 @@ def build_team_features(df: pd.DataFrame) -> pd.DataFrame:
 
     result = pd.concat(parts, ignore_index=False).sort_index()
 
-    # Confederation: static per-team metadata (no leakage). Prefixed to
-    # home_confederation / away_confederation by pivot_to_match_rows(), then
-    # one-hot encoded in train.select_feature_columns().
+    # Static per-team metadata, so it can't leak.
     conf_map = _load_confederation_map()
     result["confederation"] = (
         result["team_id"].map(conf_map).fillna("OTHER").astype(str)
     )
 
-    # Possession features from API-Football (PHASE 5/6). Nullable: only the
-    # competitions we fetched have coverage; everything else stays NaN and is
-    # filled to 0.0 in train.build_xy. Rolling means use shift(1) for leakage
-    # safety (a match's own possession never enters its own features).
+    # Only fetched competitions have possession; the rest stays NaN until train.build_xy fills 0.0.
     poss = _load_possession()
     result["_dstr"] = result["match_date"].dt.strftime("%Y-%m-%d")
     if not poss.empty:
@@ -381,8 +285,7 @@ def build_team_features(df: pd.DataFrame) -> pd.DataFrame:
             lambda s: s.shift(1).rolling(N, min_periods=1).mean())
         result[f"passes_acc_avg_{N}"] = grp["passes_accuracy"].transform(
             lambda s: s.shift(1).rolling(N, min_periods=1).mean())
-    # Drop the raw same-match observations (post-match info — must not leak as
-    # features) and the join helper column.
+    # Same-match possession is post-match info and must never be a feature.
     result = result.drop(columns=["possession_pct", "passes_accuracy", "_dstr"])
     result = result.sort_values(["match_date", "match_id", "team_id"]).reset_index(drop=True)
 
@@ -391,31 +294,17 @@ def build_team_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_h2h_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Compute head-to-head features. Slow for large datasets — cached by pipeline.
-    """
     logger.info("Computing head-to-head features...")
+    # Quadratic scan; the pipeline caches the result.
     return _compute_h2h(df)
 
 
 def pivot_to_match_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Convert dual-row format → single-row-per-match for model training.
-
-    Uses the Home team's row as the base. The Away team's features are
-    joined in with an 'away_' prefix. The target is match_outcome:
-      H = home win, D = draw, A = away win (from the Home team's result).
-
-    Returns a DataFrame where each row = one physical match.
-    """
-    # Home perspective rows only
     home = df[df["venue"] == "Home"].copy()
     home["match_outcome"] = home["result"].map({"W": "H", "D": "D", "L": "A"})
 
-    # Away perspective rows — rename columns with 'away_' prefix for features
     away = df[df["venue"] == "Away"].copy()
 
-    # Feature columns are everything except metadata
     meta_cols = {
         "match_id", "season_id", "team_id", "opponent_id",
         "match_date", "venue", "result", "goals_for", "goals_against",
@@ -430,8 +319,7 @@ def pivot_to_match_rows(df: pd.DataFrame) -> pd.DataFrame:
         columns={c: f"away_{c}" for c in away_feature_cols}
     )
 
-    # Merge on match_id (home row has away team as opponent_id)
-    # The away team's team_id matches the home row's opponent_id
+    # The away row's team_id is the home row's opponent_id.
     home = home.merge(
         away_renamed.rename(columns={"team_id": "away_team_id"}),
         left_on=["match_id", "opponent_id"],
@@ -439,15 +327,12 @@ def pivot_to_match_rows(df: pd.DataFrame) -> pd.DataFrame:
         how="inner",
     )
 
-    # Rename home feature cols with 'home_' prefix
-    home_feature_cols = [c for c in away_feature_cols]  # same set
+    home_feature_cols = [c for c in away_feature_cols]
     rename_map = {c: f"home_{c}" for c in home_feature_cols if c in home.columns}
     home = home.rename(columns=rename_map)
 
-    # Clean up redundant columns
     home = home.drop(columns=["away_team_id"], errors="ignore")
 
-    # Rename identifying columns for clarity
     home = home.rename(columns={
         "team_id":     "home_team",
         "opponent_id": "away_team",
@@ -459,14 +344,8 @@ def pivot_to_match_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_feature_columns(df: pd.DataFrame) -> list[str]:
-    """
-    Return the list of model feature columns.
-
-    After pivot_to_match_rows(), all pre-match features have a 'home_' or
-    'away_' prefix. Only those columns are valid features; everything else is
-    metadata, post-match stats, or the target label.
-    """
     _id_cols = {"home_team", "away_team"}
+    # Only prefixed columns are pre-match features; the rest is metadata, post-match stats or the target.
     return [
         c for c in df.columns
         if (c.startswith("home_") or c.startswith("away_") or c.startswith("diff_"))
@@ -478,19 +357,6 @@ def build_features(
     df: pd.DataFrame,
     include_h2h: bool = True,
 ) -> pd.DataFrame:
-    """
-    Full feature engineering pipeline:
-      1. Compute rolling team features (leakage-free via shift(1))
-      2. Optionally compute head-to-head features
-      3. Pivot to single-row-per-match
-
-    Args:
-        df:          Raw dual-row match DataFrame from loader.
-        include_h2h: Whether to compute H2H features (adds latency).
-
-    Returns:
-        Single-row-per-match DataFrame ready for model training.
-    """
     df = build_team_features(df)
     df = compute_elo_features(df)
 

@@ -1,31 +1,3 @@
-"""
-Shot-level expected-goals (xG) models.
-
-Every pipeline exposes predict_proba(X) -> [[p_no_goal, p_goal]].
-
-  1. logistic_xg   — baseline: distance_m + angle_deg only. Kept because
-                     data-pipeline/scripts/06_backfill_xg.py loads it by name.
-  2. logistic_full — the full at-release feature set (location, body part,
-                     technique, assist type, pressure, first-time, freeze-frame
-                     defender/keeper context). Median-imputes freeze-frame gaps
-                     (ff_available flags them), scales, one-hots categoricals.
-  3. gbm_full      — same features, XGBoost (HistGradientBoosting fallback).
-                     Not wrapped in a calibrator: on the validation fold the
-                     raw log-loss objective was better calibrated than
-                     isotonic (LL 0.2417 vs 0.2422) or sigmoid (0.2465).
-  4. grid_xg       — logistic on distance, angle, body part, situation only.
-                     Powers xg_grid.json: the frontend xG lab can only vary
-                     those inputs, so its grid comes from a model that uses
-                     exactly them instead of fixing defender positions.
-
-Label: is_goal. All inputs are known at the moment the shot is taken; see the
-FORBIDDEN COLUMNS in docs/DATA_CONTRACT_SHOTS.md. FORBIDDEN_FEATURES below is
-the machine-checked version of that list.
-
-Which model is production is decided in ml/pipeline/train_shots.py on a
-time-ordered validation tournament and recorded in production_model.json.
-"""
-
 import logging
 
 import numpy as np
@@ -41,9 +13,6 @@ from ml.config import RANDOM_SEED
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Feature sets (see docs/DATA_CONTRACT_SHOTS.md)
-# ---------------------------------------------------------------------------
 LOGISTIC_FEATURES = ["distance_m", "angle_deg"]
 
 BODY_PART_CATEGORIES = ["right_foot", "left_foot", "head"]
@@ -81,7 +50,7 @@ FEATURE_SETS = {
     "grid_xg": GRID_FEATURES,
 }
 
-# Post-shot or provider-model columns. Never a model input.
+# Post-shot or provider-model columns, mirroring docs/DATA_CONTRACT_SHOTS.md. Never a model input.
 FORBIDDEN_FEATURES = {
     "is_goal", "label", "outcome", "shot_outcome", "end_location", "end_x", "end_y", "end_z",
     "statsbomb_xg", "sb_xg_benchmark", "keeper_dive_direction", "rebound_outcome",
@@ -98,7 +67,7 @@ except ImportError:
 
 
 def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add model-ready derived columns. Pure function of at-release inputs."""
+    """Adds model-ready derived columns from at-release inputs only."""
     out = df.copy()
     out["log_distance"] = np.log1p(out["distance_m"].astype(float))
     for col in ("under_pressure", "first_time", "ff_available"):
@@ -114,12 +83,13 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# Fixed categories so train, eval and single-shot inference encode identically.
 def _one_hot(categories):
     return OneHotEncoder(categories=categories, handle_unknown="ignore")
 
 
 def make_logistic_xg_pipeline() -> Pipeline:
-    """Logistic xG baseline on distance + angle only."""
+    """Distance + angle baseline; kept because data-pipeline/scripts/06_backfill_xg.py loads it by name."""
     return Pipeline([
         ("scaler", StandardScaler()),
         ("clf", LogisticRegression(max_iter=1000, random_state=RANDOM_SEED)),
@@ -127,7 +97,6 @@ def make_logistic_xg_pipeline() -> Pipeline:
 
 
 def make_logistic_full_pipeline(C: float = 1.0) -> Pipeline:
-    """Logistic on the full at-release feature set."""
     prep = ColumnTransformer([
         ("num", Pipeline([
             ("impute", SimpleImputer(strategy="median")),
@@ -142,7 +111,7 @@ def make_logistic_full_pipeline(C: float = 1.0) -> Pipeline:
 
 
 def make_grid_xg_pipeline() -> Pipeline:
-    """Logistic on distance, angle, body part, situation (the xG-lab inputs)."""
+    """Uses only the inputs the frontend xG lab can vary, so xg_grid.json never fixes defender positions."""
     prep = ColumnTransformer([
         ("num", StandardScaler(), GRID_NUMERIC),
         ("cat", _one_hot([BODY_PART_CATEGORIES, SITUATION_CATEGORIES]), GRID_CATEGORICAL),
@@ -154,7 +123,6 @@ def make_grid_xg_pipeline() -> Pipeline:
 
 
 def _make_gbm_estimator():
-    """XGBoost if available, else HistGradientBoosting. Both accept NaN."""
     if HAVE_XGBOOST:
         return XGBClassifier(
             n_estimators=400,
@@ -176,15 +144,12 @@ def _make_gbm_estimator():
 
 
 def make_gbm_full_pipeline() -> Pipeline:
-    """
-    GBM on the full feature set. Numerics pass through untouched (NaN is
-    handled natively); categoricals are one-hot with fixed categories so
-    train, eval, and single-shot inference encode identically.
-    """
     prep = ColumnTransformer([
+        # No imputer: both GBM backends handle NaN natively.
         ("num", "passthrough", FULL_NUMERIC),
         ("cat", _one_hot(_FULL_CATS), FULL_CATEGORICAL),
     ], sparse_threshold=0)
+    # No calibrator: on validation, raw log-loss beat isotonic (0.2417 vs 0.2422) and sigmoid (0.2465).
     return Pipeline([("prep", prep), ("clf", _make_gbm_estimator())])
 
 
@@ -200,6 +165,5 @@ MODEL_FACTORIES = {
 
 
 def p_goal(model, X: pd.DataFrame) -> np.ndarray:
-    """Probability of the goal class, robust to class ordering."""
     proba = model.predict_proba(X)
     return proba[:, list(model.classes_).index(1)]

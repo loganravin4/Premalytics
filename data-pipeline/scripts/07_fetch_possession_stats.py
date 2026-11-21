@@ -1,32 +1,6 @@
-"""
-07_fetch_possession_stats.py — fetch match possession stats from API-Football.
+"""Fetch per-team possession, shots on target, and pass accuracy from API-Football into data/raw/api_football/.
 
-Pulls per-team possession %, shots on target, and pass-accuracy % for the
-major international competitions and writes them to a per-competition/season
-CSV that PHASE 6 joins onto the match feature rows.
-
-Auth: API_FOOTBALL_KEY read from .env (python-dotenv). The API-Football key is
-sent in the `x-apisports-key` header (the direct api-sports plan). The base URL
-defaults to the value in the task spec; override with --base-url if the plan
-uses a different host (e.g. https://v3.football.api-sports.io).
-
-Endpoints (API-Football v3):
-    GET /status                              — verify key / subscription
-    GET /leagues?id={id}                     — resolve a league id (dry-run)
-    GET /fixtures?league={id}&season={year}  — list fixtures
-    GET /fixtures/statistics?fixture={id}    — per-team match stats
-
-Output:
-    data-pipeline/data/raw/api_football/{competition_id}/{season}/possession_stats.csv
-    columns: match_date, home_team_name, away_team_name, team_name,
-             possession_pct, shots_on_target, passes_accuracy
-
-Free tier is ~10 req/min, so we sleep 1s between per-fixture statistics calls
-and cache-guard: a competition/season whose CSV already exists is skipped.
-
-Usage:
-    python data-pipeline/scripts/07_fetch_possession_stats.py --dry-run
-    python data-pipeline/scripts/07_fetch_possession_stats.py
+Usage: python data-pipeline/scripts/07_fetch_possession_stats.py [--dry-run] [--base-url URL] [--leagues ...] [--seasons ...]
 """
 
 from __future__ import annotations
@@ -47,9 +21,8 @@ PIPELINE_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = PIPELINE_DIR.parent
 OUT_ROOT = PIPELINE_DIR / "data" / "raw" / "api_football"
 
-DEFAULT_BASE_URL = "https://v3.api-football.com"   # per task spec
+DEFAULT_BASE_URL = "https://v3.api-football.com"
 
-# competition_id (our slug) -> API-Football league id
 LEAGUES = {
     "fifa_world_cup": 1,
     "uefa_euro": 4,
@@ -59,9 +32,8 @@ LEAGUES = {
 SEASONS = [2018, 2020, 2022, 2024]
 
 REQUEST_TIMEOUT = 30
-# Free tier is 10 requests/minute, i.e. one every 6s. The task suggested 1s but
-# that bursts past the per-minute cap and gets 429'd — 6.5s keeps us compliant.
-FIXTURE_SLEEP_S = 6.5   # rate-limit guard between /fixtures/statistics calls
+# Free tier allows 10 req/min; tighter spacing bursts past it and gets 429'd
+FIXTURE_SLEEP_S = 6.5
 
 logging.basicConfig(
     level=logging.INFO,
@@ -73,17 +45,16 @@ logger = logging.getLogger(__name__)
 
 
 class ApiError(RuntimeError):
-    """Raised when API-Football returns an error envelope or bad HTTP status."""
+    pass
 
 
 def _get(base_url: str, headers: dict, path: str, params: dict | None = None) -> dict:
-    """GET an API-Football endpoint, raising ApiError on any error signal."""
     url = f"{base_url}{path}"
     resp = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
     if resp.status_code != 200:
         raise ApiError(f"HTTP {resp.status_code} for {path} — {resp.text[:200]}")
     data = resp.json()
-    # API-Football wraps errors in an "errors" dict/list; empty means success.
+    # Errors arrive inside a 200 response, in the "errors" field
     errors = data.get("errors")
     if errors:
         raise ApiError(f"API errors for {path}: {errors}")
@@ -91,7 +62,6 @@ def _get(base_url: str, headers: dict, path: str, params: dict | None = None) ->
 
 
 def _stat_value(stats: list[dict], stat_type: str):
-    """Pull one stat by its API 'type' label; return raw value or None."""
     for s in stats:
         if s.get("type") == stat_type:
             return s.get("value")
@@ -99,7 +69,6 @@ def _stat_value(stats: list[dict], stat_type: str):
 
 
 def _pct_to_float(value) -> float | None:
-    """Convert '54%' / 54 -> 54.0; None/'' -> None."""
     if value is None or value == "":
         return None
     try:
@@ -109,7 +78,6 @@ def _pct_to_float(value) -> float | None:
 
 
 def verify_and_resolve(base_url: str, headers: dict) -> None:
-    """Dry-run: confirm the key via /status and resolve each league id."""
     logger.info("Verifying API key via GET /status ...")
     status = _get(base_url, headers, "/status")
     resp = status.get("response", {})
@@ -178,7 +146,7 @@ def fetch_competition(base_url: str, headers: dict, comp_id: str,
             logger.warning("  fixture %s stats failed: %s", fid, e)
             time.sleep(FIXTURE_SLEEP_S)
             continue
-        time.sleep(FIXTURE_SLEEP_S)  # rate-limit guard
+        time.sleep(FIXTURE_SLEEP_S)
 
         team_stats = stats_data.get("response", [])
         if team_stats:

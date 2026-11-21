@@ -11,10 +11,7 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
-/**
- * Adds Cache-Control: public, max-age to successful GET responses of this API's controllers.
- * The data only changes when a model run is published, so short shared caching is safe.
- */
+/** Short shared caching on GETs is safe because the data only changes when a model run is published. */
 @ControllerAdvice(basePackages = "com.neutralground.web")
 public class ReadCacheHeaders implements ResponseBodyAdvice<Object> {
 

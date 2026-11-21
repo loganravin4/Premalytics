@@ -20,10 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Full stack against a real Postgres: Flyway migrations on a fresh database, Hibernate schema
- * validation, and every read endpoint over seeded data. Skipped when Docker is not available.
- */
+/** Runs migrations and every read endpoint against a real Postgres; skipped when Docker is not available. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)

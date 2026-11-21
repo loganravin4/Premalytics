@@ -1,13 +1,4 @@
-"""
-Tests for the score-prediction pipeline:
-  - pure functions in ml.models.score_predictor (no artifacts on disk)
-  - ml.pipeline.train_scores.main()'s metrics.json persistence
-
-The metrics-writing test monkeypatches load_score_features() with a small
-synthetic feature matrix and ARTIFACTS_DIR with tmp_path, so it exercises the
-real training/eval/persistence code path without touching real (gitignored)
-raw match data or the real ml/artifacts directory.
-"""
+"""Score predictor pure functions, plus train_scores.main() metrics persistence on synthetic data and a temp artifacts dir."""
 
 import json
 
@@ -28,9 +19,6 @@ from ml.models.score_predictor import (
 import ml.pipeline.train_scores as train_scores
 
 
-# ---------------------------------------------------------------------------
-# ml.models.score_predictor — pure functions
-# ---------------------------------------------------------------------------
 
 class TestFeatureColumns:
     def test_numeric_columns_use_xg_true_includes_xg_features(self):
@@ -49,15 +37,13 @@ class TestFeatureColumns:
 
 class TestPrepareScoreFeatures:
     def test_fills_missing_columns_and_coerces_types(self):
-        # Only one numeric column and no categorical columns present at all —
-        # prepare_score_features must still produce every expected column.
         raw = pd.DataFrame({"home_gf_avg_5": ["1.5", "2.0"]})
         X = prepare_score_features(raw, use_xg=False)
 
         assert list(X.columns) == feature_columns(use_xg=False)
         assert X["home_gf_avg_5"].tolist() == [1.5, 2.0]
-        assert X["home_ga_avg_5"].isna().all()          # missing numeric -> NaN
-        assert (X["home_confederation"] == "OTHER").all()  # missing categorical -> OTHER
+        assert X["home_ga_avg_5"].isna().all()
+        assert (X["home_confederation"] == "OTHER").all()
 
     def test_drops_xg_columns_when_use_xg_false(self):
         raw = pd.DataFrame({c: [1.0, 2.0] for c in XG_NUMERIC + BASE_NUMERIC})
@@ -80,15 +66,9 @@ class TestPredictScoreline:
         assert result["probability"] == pytest.approx(best, abs=1e-4)
 
 
-# ---------------------------------------------------------------------------
-# ml.pipeline.train_scores — metrics.json persistence
-# ---------------------------------------------------------------------------
 
 def _synthetic_score_features(n: int = 40) -> pd.DataFrame:
-    """
-    Small pivoted feature matrix shaped like load_score_features()'s output,
-    straddling TRAIN_CUTOFF_DATE so both the train and eval splits are non-empty.
-    """
+    """Shaped like load_score_features() output and straddling TRAIN_CUTOFF_DATE so train and eval are both non-empty."""
     rng = np.random.default_rng(42)
     dates = pd.date_range("2026-05-01", periods=n, freq="2D")
     return pd.DataFrame({
