@@ -107,8 +107,11 @@ K_FACTORS = {
 # when one team is a heavy favorite (a known ELO-based-model issue). When the
 # favorite's raw probability exceeds DRAW_CALIBRATION_THRESHOLD, that much of
 # its mass past the threshold is shifted to the draw, scaled by
-# DRAW_CALIBRATION_ALPHA. Values chosen by grid search over the WC 2026
-# holdout — see ml/pipeline/tune_draw_calibration.py.
+# DRAW_CALIBRATION_ALPHA. These values were chosen by grid search over the
+# WC 2026 holdout itself. Re-tuned walk-forward (tune_draw_calibration.py,
+# ML-04) the rule gains ~0.0006 log loss, so it only applies to plain-GBM runs;
+# runs with an ensemble.json (GBM + Dixon-Coles) skip it. See
+# docs/ML_EXPERIMENTS.md.
 DRAW_CALIBRATION_THRESHOLD = 0.75
 DRAW_CALIBRATION_ALPHA = 0.60
 
