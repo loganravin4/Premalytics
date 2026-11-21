@@ -51,4 +51,6 @@ data-pipeline/data/static/*
 ## Legacy / removed files
 data-pipeline/test_scraper.py
 data-pipeline/scraper/
-.claude/settings.local.json
+.claude/
+.playwright-cli/
+.impeccable/

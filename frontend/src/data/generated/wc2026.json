@@ -1,0 +1,2997 @@
+{
+ "summary": {
+  "run": "20261121_144113",
+  "modelRunId": "20260722_002607",
+  "scoringMode": "shootout_credited",
+  "correct": 70,
+  "total": 104,
+  "logLoss": 0.7637,
+  "byStage": {
+   "group": {
+    "correct": 44,
+    "total": 72,
+    "accuracy": 0.6111
+   },
+   "round_of_32": {
+    "correct": 13,
+    "total": 16,
+    "accuracy": 0.8125
+   },
+   "round_of_16": {
+    "correct": 6,
+    "total": 8,
+    "accuracy": 0.75
+   },
+   "quarter_final": {
+    "correct": 4,
+    "total": 4,
+    "accuracy": 1
+   },
+   "semi_final": {
+    "correct": 2,
+    "total": 2,
+    "accuracy": 1
+   },
+   "third_place": {
+    "correct": 0,
+    "total": 1,
+    "accuracy": 0
+   },
+   "final": {
+    "correct": 1,
+    "total": 1,
+    "accuracy": 1
+   }
+  },
+  "calibration": {
+   "confident_home_matches": 50,
+   "confident_home_actual_wins": 36,
+   "confident_home_win_rate": 0.72,
+   "confident_home_avg_stated": 0.7075,
+   "verdict": "well calibrated"
+  },
+  "raw": {
+   "nTrain": 30417,
+   "nFeatures": 123,
+   "gbm": {
+    "accuracy": 0.6635,
+    "log_loss": 0.86137
+   },
+   "rps": 0.16156
+  }
+ },
+ "matches": [
+  {
+   "id": 1,
+   "date": "2026-06-11",
+   "stage": "group",
+   "home": "KOR",
+   "away": "CZE",
+   "neutral": true,
+   "p": {
+    "home": 0.437,
+    "draw": 0.3062,
+    "away": 0.2569
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.437,
+   "pPick": 0.437,
+   "score": {
+    "home": 2,
+    "away": 1
+   },
+   "winner": "KOR",
+   "shootout": false
+  },
+  {
+   "id": 2,
+   "date": "2026-06-11",
+   "stage": "group",
+   "home": "MEX",
+   "away": "RSA",
+   "neutral": false,
+   "p": {
+    "home": 0.7024,
+    "draw": 0.2149,
+    "away": 0.0827
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7024,
+   "pPick": 0.7024,
+   "score": {
+    "home": 2,
+    "away": 0
+   },
+   "winner": "MEX",
+   "shootout": false
+  },
+  {
+   "id": 3,
+   "date": "2026-06-12",
+   "stage": "group",
+   "home": "CAN",
+   "away": "BIH",
+   "neutral": false,
+   "p": {
+    "home": 0.6145,
+    "draw": 0.223,
+    "away": 0.1625
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.223,
+   "pPick": 0.6145,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 4,
+   "date": "2026-06-12",
+   "stage": "group",
+   "home": "USA",
+   "away": "PAR",
+   "neutral": false,
+   "p": {
+    "home": 0.4572,
+    "draw": 0.2883,
+    "away": 0.2545
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.4572,
+   "pPick": 0.4572,
+   "score": {
+    "home": 4,
+    "away": 1
+   },
+   "winner": "USA",
+   "shootout": false
+  },
+  {
+   "id": 5,
+   "date": "2026-06-13",
+   "stage": "group",
+   "home": "AUS",
+   "away": "TUR",
+   "neutral": true,
+   "p": {
+    "home": 0.2498,
+    "draw": 0.2905,
+    "away": 0.4597
+   },
+   "pick": "away",
+   "outcome": "home",
+   "correct": false,
+   "pActual": 0.2498,
+   "pPick": 0.4597,
+   "score": {
+    "home": 2,
+    "away": 0
+   },
+   "winner": "AUS",
+   "shootout": false
+  },
+  {
+   "id": 6,
+   "date": "2026-06-13",
+   "stage": "group",
+   "home": "BRA",
+   "away": "MAR",
+   "neutral": true,
+   "p": {
+    "home": 0.4856,
+    "draw": 0.2592,
+    "away": 0.2552
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2592,
+   "pPick": 0.4856,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 7,
+   "date": "2026-06-13",
+   "stage": "group",
+   "home": "HAI",
+   "away": "SCO",
+   "neutral": true,
+   "p": {
+    "home": 0.172,
+    "draw": 0.2976,
+    "away": 0.5304
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5304,
+   "pPick": 0.5304,
+   "score": {
+    "home": 0,
+    "away": 1
+   },
+   "winner": "SCO",
+   "shootout": false
+  },
+  {
+   "id": 8,
+   "date": "2026-06-13",
+   "stage": "group",
+   "home": "QAT",
+   "away": "SUI",
+   "neutral": true,
+   "p": {
+    "home": 0.1397,
+    "draw": 0.2354,
+    "away": 0.6249
+   },
+   "pick": "away",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2354,
+   "pPick": 0.6249,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 9,
+   "date": "2026-06-14",
+   "stage": "group",
+   "home": "CIV",
+   "away": "ECU",
+   "neutral": true,
+   "p": {
+    "home": 0.2089,
+    "draw": 0.3033,
+    "away": 0.4878
+   },
+   "pick": "away",
+   "outcome": "home",
+   "correct": false,
+   "pActual": 0.2089,
+   "pPick": 0.4878,
+   "score": {
+    "home": 1,
+    "away": 0
+   },
+   "winner": "CIV",
+   "shootout": false
+  },
+  {
+   "id": 10,
+   "date": "2026-06-14",
+   "stage": "group",
+   "home": "GER",
+   "away": "CUW",
+   "neutral": true,
+   "p": {
+    "home": 0.8094,
+    "draw": 0.171,
+    "away": 0.0196
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.8094,
+   "pPick": 0.8094,
+   "score": {
+    "home": 7,
+    "away": 1
+   },
+   "winner": "GER",
+   "shootout": false
+  },
+  {
+   "id": 11,
+   "date": "2026-06-14",
+   "stage": "group",
+   "home": "NED",
+   "away": "JPN",
+   "neutral": true,
+   "p": {
+    "home": 0.4249,
+    "draw": 0.2695,
+    "away": 0.3056
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2695,
+   "pPick": 0.4249,
+   "score": {
+    "home": 2,
+    "away": 2
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 12,
+   "date": "2026-06-14",
+   "stage": "group",
+   "home": "SWE",
+   "away": "TUN",
+   "neutral": true,
+   "p": {
+    "home": 0.542,
+    "draw": 0.2649,
+    "away": 0.1931
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.542,
+   "pPick": 0.542,
+   "score": {
+    "home": 5,
+    "away": 1
+   },
+   "winner": "SWE",
+   "shootout": false
+  },
+  {
+   "id": 13,
+   "date": "2026-06-15",
+   "stage": "group",
+   "home": "BEL",
+   "away": "EGY",
+   "neutral": true,
+   "p": {
+    "home": 0.581,
+    "draw": 0.2642,
+    "away": 0.1548
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2642,
+   "pPick": 0.581,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 14,
+   "date": "2026-06-15",
+   "stage": "group",
+   "home": "ESP",
+   "away": "CPV",
+   "neutral": true,
+   "p": {
+    "home": 0.7828,
+    "draw": 0.1669,
+    "away": 0.0503
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.1669,
+   "pPick": 0.7828,
+   "score": {
+    "home": 0,
+    "away": 0
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 15,
+   "date": "2026-06-15",
+   "stage": "group",
+   "home": "IRN",
+   "away": "NZL",
+   "neutral": true,
+   "p": {
+    "home": 0.6495,
+    "draw": 0.1968,
+    "away": 0.1537
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.1968,
+   "pPick": 0.6495,
+   "score": {
+    "home": 2,
+    "away": 2
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 16,
+   "date": "2026-06-15",
+   "stage": "group",
+   "home": "KSA",
+   "away": "URU",
+   "neutral": true,
+   "p": {
+    "home": 0.162,
+    "draw": 0.2311,
+    "away": 0.6069
+   },
+   "pick": "away",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2311,
+   "pPick": 0.6069,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 17,
+   "date": "2026-06-16",
+   "stage": "group",
+   "home": "ARG",
+   "away": "ALG",
+   "neutral": true,
+   "p": {
+    "home": 0.67,
+    "draw": 0.2529,
+    "away": 0.0771
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.67,
+   "pPick": 0.67,
+   "score": {
+    "home": 3,
+    "away": 0
+   },
+   "winner": "ARG",
+   "shootout": false
+  },
+  {
+   "id": 18,
+   "date": "2026-06-16",
+   "stage": "group",
+   "home": "AUT",
+   "away": "JOR",
+   "neutral": true,
+   "p": {
+    "home": 0.6573,
+    "draw": 0.2012,
+    "away": 0.1415
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.6573,
+   "pPick": 0.6573,
+   "score": {
+    "home": 3,
+    "away": 1
+   },
+   "winner": "AUT",
+   "shootout": false
+  },
+  {
+   "id": 19,
+   "date": "2026-06-16",
+   "stage": "group",
+   "home": "FRA",
+   "away": "SEN",
+   "neutral": true,
+   "p": {
+    "home": 0.6726,
+    "draw": 0.1937,
+    "away": 0.1337
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.6726,
+   "pPick": 0.6726,
+   "score": {
+    "home": 3,
+    "away": 1
+   },
+   "winner": "FRA",
+   "shootout": false
+  },
+  {
+   "id": 20,
+   "date": "2026-06-16",
+   "stage": "group",
+   "home": "IRQ",
+   "away": "NOR",
+   "neutral": true,
+   "p": {
+    "home": 0.2372,
+    "draw": 0.2835,
+    "away": 0.4794
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.4794,
+   "pPick": 0.4794,
+   "score": {
+    "home": 1,
+    "away": 4
+   },
+   "winner": "NOR",
+   "shootout": false
+  },
+  {
+   "id": 21,
+   "date": "2026-06-17",
+   "stage": "group",
+   "home": "ENG",
+   "away": "CRO",
+   "neutral": true,
+   "p": {
+    "home": 0.4831,
+    "draw": 0.2662,
+    "away": 0.2507
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.4831,
+   "pPick": 0.4831,
+   "score": {
+    "home": 4,
+    "away": 2
+   },
+   "winner": "ENG",
+   "shootout": false
+  },
+  {
+   "id": 22,
+   "date": "2026-06-17",
+   "stage": "group",
+   "home": "GHA",
+   "away": "PAN",
+   "neutral": true,
+   "p": {
+    "home": 0.2061,
+    "draw": 0.2336,
+    "away": 0.5603
+   },
+   "pick": "away",
+   "outcome": "home",
+   "correct": false,
+   "pActual": 0.2061,
+   "pPick": 0.5603,
+   "score": {
+    "home": 1,
+    "away": 0
+   },
+   "winner": "GHA",
+   "shootout": false
+  },
+  {
+   "id": 23,
+   "date": "2026-06-17",
+   "stage": "group",
+   "home": "POR",
+   "away": "COD",
+   "neutral": true,
+   "p": {
+    "home": 0.7436,
+    "draw": 0.1656,
+    "away": 0.0908
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.1656,
+   "pPick": 0.7436,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 24,
+   "date": "2026-06-17",
+   "stage": "group",
+   "home": "UZB",
+   "away": "COL",
+   "neutral": true,
+   "p": {
+    "home": 0.1589,
+    "draw": 0.267,
+    "away": 0.5741
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5741,
+   "pPick": 0.5741,
+   "score": {
+    "home": 1,
+    "away": 3
+   },
+   "winner": "COL",
+   "shootout": false
+  },
+  {
+   "id": 25,
+   "date": "2026-06-18",
+   "stage": "group",
+   "home": "CAN",
+   "away": "QAT",
+   "neutral": false,
+   "p": {
+    "home": 0.6737,
+    "draw": 0.2021,
+    "away": 0.1242
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.6737,
+   "pPick": 0.6737,
+   "score": {
+    "home": 6,
+    "away": 0
+   },
+   "winner": "CAN",
+   "shootout": false
+  },
+  {
+   "id": 26,
+   "date": "2026-06-18",
+   "stage": "group",
+   "home": "CZE",
+   "away": "RSA",
+   "neutral": true,
+   "p": {
+    "home": 0.493,
+    "draw": 0.2921,
+    "away": 0.2149
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2921,
+   "pPick": 0.493,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 27,
+   "date": "2026-06-18",
+   "stage": "group",
+   "home": "MEX",
+   "away": "KOR",
+   "neutral": false,
+   "p": {
+    "home": 0.5032,
+    "draw": 0.2975,
+    "away": 0.1993
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.5032,
+   "pPick": 0.5032,
+   "score": {
+    "home": 1,
+    "away": 0
+   },
+   "winner": "MEX",
+   "shootout": false
+  },
+  {
+   "id": 28,
+   "date": "2026-06-18",
+   "stage": "group",
+   "home": "SUI",
+   "away": "BIH",
+   "neutral": true,
+   "p": {
+    "home": 0.6747,
+    "draw": 0.2133,
+    "away": 0.112
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.6747,
+   "pPick": 0.6747,
+   "score": {
+    "home": 4,
+    "away": 1
+   },
+   "winner": "SUI",
+   "shootout": false
+  },
+  {
+   "id": 29,
+   "date": "2026-06-19",
+   "stage": "group",
+   "home": "BRA",
+   "away": "HAI",
+   "neutral": true,
+   "p": {
+    "home": 0.7833,
+    "draw": 0.1712,
+    "away": 0.0455
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7833,
+   "pPick": 0.7833,
+   "score": {
+    "home": 3,
+    "away": 0
+   },
+   "winner": "BRA",
+   "shootout": false
+  },
+  {
+   "id": 30,
+   "date": "2026-06-19",
+   "stage": "group",
+   "home": "SCO",
+   "away": "MAR",
+   "neutral": true,
+   "p": {
+    "home": 0.1531,
+    "draw": 0.252,
+    "away": 0.5949
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5949,
+   "pPick": 0.5949,
+   "score": {
+    "home": 0,
+    "away": 1
+   },
+   "winner": "MAR",
+   "shootout": false
+  },
+  {
+   "id": 31,
+   "date": "2026-06-19",
+   "stage": "group",
+   "home": "TUR",
+   "away": "PAR",
+   "neutral": true,
+   "p": {
+    "home": 0.4702,
+    "draw": 0.2898,
+    "away": 0.2399
+   },
+   "pick": "home",
+   "outcome": "away",
+   "correct": false,
+   "pActual": 0.2399,
+   "pPick": 0.4702,
+   "score": {
+    "home": 0,
+    "away": 1
+   },
+   "winner": "PAR",
+   "shootout": false
+  },
+  {
+   "id": 32,
+   "date": "2026-06-19",
+   "stage": "group",
+   "home": "USA",
+   "away": "AUS",
+   "neutral": false,
+   "p": {
+    "home": 0.3436,
+    "draw": 0.2907,
+    "away": 0.3658
+   },
+   "pick": "away",
+   "outcome": "home",
+   "correct": false,
+   "pActual": 0.3436,
+   "pPick": 0.3658,
+   "score": {
+    "home": 2,
+    "away": 0
+   },
+   "winner": "USA",
+   "shootout": false
+  },
+  {
+   "id": 33,
+   "date": "2026-06-20",
+   "stage": "group",
+   "home": "ECU",
+   "away": "CUW",
+   "neutral": true,
+   "p": {
+    "home": 0.8054,
+    "draw": 0.1782,
+    "away": 0.0164
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.1782,
+   "pPick": 0.8054,
+   "score": {
+    "home": 0,
+    "away": 0
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 34,
+   "date": "2026-06-20",
+   "stage": "group",
+   "home": "GER",
+   "away": "CIV",
+   "neutral": true,
+   "p": {
+    "home": 0.703,
+    "draw": 0.2089,
+    "away": 0.0881
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.703,
+   "pPick": 0.703,
+   "score": {
+    "home": 2,
+    "away": 1
+   },
+   "winner": "GER",
+   "shootout": false
+  },
+  {
+   "id": 35,
+   "date": "2026-06-20",
+   "stage": "group",
+   "home": "NED",
+   "away": "SWE",
+   "neutral": true,
+   "p": {
+    "home": 0.6442,
+    "draw": 0.2125,
+    "away": 0.1433
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.6442,
+   "pPick": 0.6442,
+   "score": {
+    "home": 5,
+    "away": 1
+   },
+   "winner": "NED",
+   "shootout": false
+  },
+  {
+   "id": 36,
+   "date": "2026-06-20",
+   "stage": "group",
+   "home": "TUN",
+   "away": "JPN",
+   "neutral": true,
+   "p": {
+    "home": 0.2156,
+    "draw": 0.3089,
+    "away": 0.4755
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.4755,
+   "pPick": 0.4755,
+   "score": {
+    "home": 0,
+    "away": 4
+   },
+   "winner": "JPN",
+   "shootout": false
+  },
+  {
+   "id": 37,
+   "date": "2026-06-21",
+   "stage": "group",
+   "home": "BEL",
+   "away": "IRN",
+   "neutral": true,
+   "p": {
+    "home": 0.4941,
+    "draw": 0.2741,
+    "away": 0.2318
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2741,
+   "pPick": 0.4941,
+   "score": {
+    "home": 0,
+    "away": 0
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 38,
+   "date": "2026-06-21",
+   "stage": "group",
+   "home": "ESP",
+   "away": "KSA",
+   "neutral": true,
+   "p": {
+    "home": 0.7841,
+    "draw": 0.1609,
+    "away": 0.055
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7841,
+   "pPick": 0.7841,
+   "score": {
+    "home": 4,
+    "away": 0
+   },
+   "winner": "ESP",
+   "shootout": false
+  },
+  {
+   "id": 39,
+   "date": "2026-06-21",
+   "stage": "group",
+   "home": "NZL",
+   "away": "EGY",
+   "neutral": true,
+   "p": {
+    "home": 0.2229,
+    "draw": 0.2645,
+    "away": 0.5126
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5126,
+   "pPick": 0.5126,
+   "score": {
+    "home": 1,
+    "away": 3
+   },
+   "winner": "EGY",
+   "shootout": false
+  },
+  {
+   "id": 40,
+   "date": "2026-06-21",
+   "stage": "group",
+   "home": "URU",
+   "away": "CPV",
+   "neutral": true,
+   "p": {
+    "home": 0.6665,
+    "draw": 0.215,
+    "away": 0.1185
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.215,
+   "pPick": 0.6665,
+   "score": {
+    "home": 2,
+    "away": 2
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 41,
+   "date": "2026-06-22",
+   "stage": "group",
+   "home": "ARG",
+   "away": "AUT",
+   "neutral": true,
+   "p": {
+    "home": 0.6482,
+    "draw": 0.2576,
+    "away": 0.0942
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.6482,
+   "pPick": 0.6482,
+   "score": {
+    "home": 2,
+    "away": 0
+   },
+   "winner": "ARG",
+   "shootout": false
+  },
+  {
+   "id": 42,
+   "date": "2026-06-22",
+   "stage": "group",
+   "home": "FRA",
+   "away": "IRQ",
+   "neutral": true,
+   "p": {
+    "home": 0.7643,
+    "draw": 0.167,
+    "away": 0.0687
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7643,
+   "pPick": 0.7643,
+   "score": {
+    "home": 3,
+    "away": 0
+   },
+   "winner": "FRA",
+   "shootout": false
+  },
+  {
+   "id": 43,
+   "date": "2026-06-22",
+   "stage": "group",
+   "home": "JOR",
+   "away": "ALG",
+   "neutral": true,
+   "p": {
+    "home": 0.2277,
+    "draw": 0.3008,
+    "away": 0.4715
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.4715,
+   "pPick": 0.4715,
+   "score": {
+    "home": 1,
+    "away": 2
+   },
+   "winner": "ALG",
+   "shootout": false
+  },
+  {
+   "id": 44,
+   "date": "2026-06-22",
+   "stage": "group",
+   "home": "NOR",
+   "away": "SEN",
+   "neutral": true,
+   "p": {
+    "home": 0.4057,
+    "draw": 0.2673,
+    "away": 0.327
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.4057,
+   "pPick": 0.4057,
+   "score": {
+    "home": 3,
+    "away": 2
+   },
+   "winner": "NOR",
+   "shootout": false
+  },
+  {
+   "id": 45,
+   "date": "2026-06-23",
+   "stage": "group",
+   "home": "COL",
+   "away": "COD",
+   "neutral": true,
+   "p": {
+    "home": 0.6713,
+    "draw": 0.2136,
+    "away": 0.1151
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.6713,
+   "pPick": 0.6713,
+   "score": {
+    "home": 1,
+    "away": 0
+   },
+   "winner": "COL",
+   "shootout": false
+  },
+  {
+   "id": 46,
+   "date": "2026-06-23",
+   "stage": "group",
+   "home": "ENG",
+   "away": "GHA",
+   "neutral": true,
+   "p": {
+    "home": 0.788,
+    "draw": 0.1721,
+    "away": 0.0399
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.1721,
+   "pPick": 0.788,
+   "score": {
+    "home": 0,
+    "away": 0
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 47,
+   "date": "2026-06-23",
+   "stage": "group",
+   "home": "PAN",
+   "away": "CRO",
+   "neutral": true,
+   "p": {
+    "home": 0.1782,
+    "draw": 0.3027,
+    "away": 0.5191
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5191,
+   "pPick": 0.5191,
+   "score": {
+    "home": 0,
+    "away": 1
+   },
+   "winner": "CRO",
+   "shootout": false
+  },
+  {
+   "id": 48,
+   "date": "2026-06-23",
+   "stage": "group",
+   "home": "POR",
+   "away": "UZB",
+   "neutral": true,
+   "p": {
+    "home": 0.7129,
+    "draw": 0.1793,
+    "away": 0.1078
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7129,
+   "pPick": 0.7129,
+   "score": {
+    "home": 5,
+    "away": 0
+   },
+   "winner": "POR",
+   "shootout": false
+  },
+  {
+   "id": 49,
+   "date": "2026-06-24",
+   "stage": "group",
+   "home": "BIH",
+   "away": "QAT",
+   "neutral": true,
+   "p": {
+    "home": 0.357,
+    "draw": 0.283,
+    "away": 0.36
+   },
+   "pick": "away",
+   "outcome": "home",
+   "correct": false,
+   "pActual": 0.357,
+   "pPick": 0.36,
+   "score": {
+    "home": 3,
+    "away": 1
+   },
+   "winner": "BIH",
+   "shootout": false
+  },
+  {
+   "id": 50,
+   "date": "2026-06-24",
+   "stage": "group",
+   "home": "CAN",
+   "away": "SUI",
+   "neutral": false,
+   "p": {
+    "home": 0.3037,
+    "draw": 0.309,
+    "away": 0.3873
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.3873,
+   "pPick": 0.3873,
+   "score": {
+    "home": 1,
+    "away": 2
+   },
+   "winner": "SUI",
+   "shootout": false
+  },
+  {
+   "id": 51,
+   "date": "2026-06-24",
+   "stage": "group",
+   "home": "MAR",
+   "away": "HAI",
+   "neutral": true,
+   "p": {
+    "home": 0.7371,
+    "draw": 0.2058,
+    "away": 0.0571
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7371,
+   "pPick": 0.7371,
+   "score": {
+    "home": 4,
+    "away": 2
+   },
+   "winner": "MAR",
+   "shootout": false
+  },
+  {
+   "id": 52,
+   "date": "2026-06-24",
+   "stage": "group",
+   "home": "MEX",
+   "away": "CZE",
+   "neutral": false,
+   "p": {
+    "home": 0.5619,
+    "draw": 0.2755,
+    "away": 0.1626
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.5619,
+   "pPick": 0.5619,
+   "score": {
+    "home": 3,
+    "away": 0
+   },
+   "winner": "MEX",
+   "shootout": false
+  },
+  {
+   "id": 53,
+   "date": "2026-06-24",
+   "stage": "group",
+   "home": "RSA",
+   "away": "KOR",
+   "neutral": true,
+   "p": {
+    "home": 0.1594,
+    "draw": 0.2702,
+    "away": 0.5704
+   },
+   "pick": "away",
+   "outcome": "home",
+   "correct": false,
+   "pActual": 0.1594,
+   "pPick": 0.5704,
+   "score": {
+    "home": 1,
+    "away": 0
+   },
+   "winner": "RSA",
+   "shootout": false
+  },
+  {
+   "id": 54,
+   "date": "2026-06-24",
+   "stage": "group",
+   "home": "SCO",
+   "away": "BRA",
+   "neutral": true,
+   "p": {
+    "home": 0.1091,
+    "draw": 0.2183,
+    "away": 0.6726
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.6726,
+   "pPick": 0.6726,
+   "score": {
+    "home": 0,
+    "away": 3
+   },
+   "winner": "BRA",
+   "shootout": false
+  },
+  {
+   "id": 55,
+   "date": "2026-06-25",
+   "stage": "group",
+   "home": "CUW",
+   "away": "CIV",
+   "neutral": true,
+   "p": {
+    "home": 0.2236,
+    "draw": 0.3464,
+    "away": 0.43
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.43,
+   "pPick": 0.43,
+   "score": {
+    "home": 0,
+    "away": 2
+   },
+   "winner": "CIV",
+   "shootout": false
+  },
+  {
+   "id": 56,
+   "date": "2026-06-25",
+   "stage": "group",
+   "home": "ECU",
+   "away": "GER",
+   "neutral": true,
+   "p": {
+    "home": 0.395,
+    "draw": 0.3082,
+    "away": 0.2967
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.395,
+   "pPick": 0.395,
+   "score": {
+    "home": 2,
+    "away": 1
+   },
+   "winner": "ECU",
+   "shootout": false
+  },
+  {
+   "id": 57,
+   "date": "2026-06-25",
+   "stage": "group",
+   "home": "JPN",
+   "away": "SWE",
+   "neutral": true,
+   "p": {
+    "home": 0.6477,
+    "draw": 0.222,
+    "away": 0.1303
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.222,
+   "pPick": 0.6477,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 58,
+   "date": "2026-06-25",
+   "stage": "group",
+   "home": "PAR",
+   "away": "AUS",
+   "neutral": true,
+   "p": {
+    "home": 0.469,
+    "draw": 0.2749,
+    "away": 0.2561
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2749,
+   "pPick": 0.469,
+   "score": {
+    "home": 0,
+    "away": 0
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 59,
+   "date": "2026-06-25",
+   "stage": "group",
+   "home": "TUN",
+   "away": "NED",
+   "neutral": true,
+   "p": {
+    "home": 0.1537,
+    "draw": 0.2669,
+    "away": 0.5794
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5794,
+   "pPick": 0.5794,
+   "score": {
+    "home": 1,
+    "away": 3
+   },
+   "winner": "NED",
+   "shootout": false
+  },
+  {
+   "id": 60,
+   "date": "2026-06-25",
+   "stage": "group",
+   "home": "USA",
+   "away": "TUR",
+   "neutral": false,
+   "p": {
+    "home": 0.2865,
+    "draw": 0.2957,
+    "away": 0.4178
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.4178,
+   "pPick": 0.4178,
+   "score": {
+    "home": 2,
+    "away": 3
+   },
+   "winner": "TUR",
+   "shootout": false
+  },
+  {
+   "id": 61,
+   "date": "2026-06-26",
+   "stage": "group",
+   "home": "CPV",
+   "away": "KSA",
+   "neutral": true,
+   "p": {
+    "home": 0.3255,
+    "draw": 0.2869,
+    "away": 0.3876
+   },
+   "pick": "away",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2869,
+   "pPick": 0.3876,
+   "score": {
+    "home": 0,
+    "away": 0
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 62,
+   "date": "2026-06-26",
+   "stage": "group",
+   "home": "EGY",
+   "away": "IRN",
+   "neutral": true,
+   "p": {
+    "home": 0.2904,
+    "draw": 0.3035,
+    "away": 0.4061
+   },
+   "pick": "away",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.3035,
+   "pPick": 0.4061,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 63,
+   "date": "2026-06-26",
+   "stage": "group",
+   "home": "NOR",
+   "away": "FRA",
+   "neutral": true,
+   "p": {
+    "home": 0.2085,
+    "draw": 0.2311,
+    "away": 0.5604
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5604,
+   "pPick": 0.5604,
+   "score": {
+    "home": 1,
+    "away": 4
+   },
+   "winner": "FRA",
+   "shootout": false
+  },
+  {
+   "id": 64,
+   "date": "2026-06-26",
+   "stage": "group",
+   "home": "NZL",
+   "away": "BEL",
+   "neutral": true,
+   "p": {
+    "home": 0.1305,
+    "draw": 0.2041,
+    "away": 0.6654
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.6654,
+   "pPick": 0.6654,
+   "score": {
+    "home": 1,
+    "away": 5
+   },
+   "winner": "BEL",
+   "shootout": false
+  },
+  {
+   "id": 65,
+   "date": "2026-06-26",
+   "stage": "group",
+   "home": "SEN",
+   "away": "IRQ",
+   "neutral": true,
+   "p": {
+    "home": 0.4952,
+    "draw": 0.289,
+    "away": 0.2158
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.4952,
+   "pPick": 0.4952,
+   "score": {
+    "home": 5,
+    "away": 0
+   },
+   "winner": "SEN",
+   "shootout": false
+  },
+  {
+   "id": 66,
+   "date": "2026-06-26",
+   "stage": "group",
+   "home": "URU",
+   "away": "ESP",
+   "neutral": true,
+   "p": {
+    "home": 0.1407,
+    "draw": 0.2405,
+    "away": 0.6188
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.6188,
+   "pPick": 0.6188,
+   "score": {
+    "home": 0,
+    "away": 1
+   },
+   "winner": "ESP",
+   "shootout": false
+  },
+  {
+   "id": 67,
+   "date": "2026-06-27",
+   "stage": "group",
+   "home": "ALG",
+   "away": "AUT",
+   "neutral": true,
+   "p": {
+    "home": 0.378,
+    "draw": 0.3402,
+    "away": 0.2818
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.3402,
+   "pPick": 0.378,
+   "score": {
+    "home": 3,
+    "away": 3
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 68,
+   "date": "2026-06-27",
+   "stage": "group",
+   "home": "COD",
+   "away": "UZB",
+   "neutral": true,
+   "p": {
+    "home": 0.2891,
+    "draw": 0.3063,
+    "away": 0.4046
+   },
+   "pick": "away",
+   "outcome": "home",
+   "correct": false,
+   "pActual": 0.2891,
+   "pPick": 0.4046,
+   "score": {
+    "home": 3,
+    "away": 1
+   },
+   "winner": "COD",
+   "shootout": false
+  },
+  {
+   "id": 69,
+   "date": "2026-06-27",
+   "stage": "group",
+   "home": "COL",
+   "away": "POR",
+   "neutral": true,
+   "p": {
+    "home": 0.3769,
+    "draw": 0.2734,
+    "away": 0.3497
+   },
+   "pick": "home",
+   "outcome": "draw",
+   "correct": false,
+   "pActual": 0.2734,
+   "pPick": 0.3769,
+   "score": {
+    "home": 0,
+    "away": 0
+   },
+   "winner": null,
+   "shootout": false
+  },
+  {
+   "id": 70,
+   "date": "2026-06-27",
+   "stage": "group",
+   "home": "CRO",
+   "away": "GHA",
+   "neutral": true,
+   "p": {
+    "home": 0.763,
+    "draw": 0.195,
+    "away": 0.042
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.763,
+   "pPick": 0.763,
+   "score": {
+    "home": 2,
+    "away": 1
+   },
+   "winner": "CRO",
+   "shootout": false
+  },
+  {
+   "id": 71,
+   "date": "2026-06-27",
+   "stage": "group",
+   "home": "JOR",
+   "away": "ARG",
+   "neutral": true,
+   "p": {
+    "home": 0.0413,
+    "draw": 0.1854,
+    "away": 0.7733
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.7733,
+   "pPick": 0.7733,
+   "score": {
+    "home": 1,
+    "away": 3
+   },
+   "winner": "ARG",
+   "shootout": false
+  },
+  {
+   "id": 72,
+   "date": "2026-06-27",
+   "stage": "group",
+   "home": "PAN",
+   "away": "ENG",
+   "neutral": true,
+   "p": {
+    "home": 0.0695,
+    "draw": 0.2292,
+    "away": 0.7013
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.7013,
+   "pPick": 0.7013,
+   "score": {
+    "home": 0,
+    "away": 2
+   },
+   "winner": "ENG",
+   "shootout": false
+  },
+  {
+   "id": 73,
+   "date": "2026-06-28",
+   "stage": "round_of_32",
+   "home": "RSA",
+   "away": "CAN",
+   "neutral": true,
+   "p": {
+    "home": 0.3447,
+    "draw": 0,
+    "away": 0.6552
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.6553,
+   "pPick": 0.6553,
+   "score": {
+    "home": 0,
+    "away": 1
+   },
+   "winner": "CAN",
+   "shootout": false
+  },
+  {
+   "id": 74,
+   "date": "2026-06-29",
+   "stage": "round_of_32",
+   "home": "BRA",
+   "away": "JPN",
+   "neutral": true,
+   "p": {
+    "home": 0.7274,
+    "draw": 0,
+    "away": 0.2726
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7274,
+   "pPick": 0.7274,
+   "score": {
+    "home": 2,
+    "away": 1
+   },
+   "winner": "BRA",
+   "shootout": false
+  },
+  {
+   "id": 75,
+   "date": "2026-06-29",
+   "stage": "round_of_32",
+   "home": "GER",
+   "away": "PAR",
+   "neutral": true,
+   "p": {
+    "home": 0.8106,
+    "draw": 0,
+    "away": 0.1894
+   },
+   "pick": "home",
+   "outcome": "away",
+   "correct": false,
+   "pActual": 0.1894,
+   "pPick": 0.8106,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": "PAR",
+   "shootout": true
+  },
+  {
+   "id": 76,
+   "date": "2026-06-29",
+   "stage": "round_of_32",
+   "home": "NED",
+   "away": "MAR",
+   "neutral": true,
+   "p": {
+    "home": 0.5105,
+    "draw": 0,
+    "away": 0.4894
+   },
+   "pick": "home",
+   "outcome": "away",
+   "correct": false,
+   "pActual": 0.4894,
+   "pPick": 0.5106,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": "MAR",
+   "shootout": true
+  },
+  {
+   "id": 77,
+   "date": "2026-06-30",
+   "stage": "round_of_32",
+   "home": "CIV",
+   "away": "NOR",
+   "neutral": true,
+   "p": {
+    "home": 0.4446,
+    "draw": 0,
+    "away": 0.5554
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5554,
+   "pPick": 0.5554,
+   "score": {
+    "home": 1,
+    "away": 2
+   },
+   "winner": "NOR",
+   "shootout": false
+  },
+  {
+   "id": 78,
+   "date": "2026-06-30",
+   "stage": "round_of_32",
+   "home": "FRA",
+   "away": "SWE",
+   "neutral": true,
+   "p": {
+    "home": 0.8893,
+    "draw": 0,
+    "away": 0.1107
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.8893,
+   "pPick": 0.8893,
+   "score": {
+    "home": 3,
+    "away": 0
+   },
+   "winner": "FRA",
+   "shootout": false
+  },
+  {
+   "id": 79,
+   "date": "2026-06-30",
+   "stage": "round_of_32",
+   "home": "MEX",
+   "away": "ECU",
+   "neutral": false,
+   "p": {
+    "home": 0.5171,
+    "draw": 0,
+    "away": 0.4829
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.5171,
+   "pPick": 0.5171,
+   "score": {
+    "home": 2,
+    "away": 0
+   },
+   "winner": "MEX",
+   "shootout": false
+  },
+  {
+   "id": 80,
+   "date": "2026-07-01",
+   "stage": "round_of_32",
+   "home": "BEL",
+   "away": "SEN",
+   "neutral": true,
+   "p": {
+    "home": 0.6668,
+    "draw": 0,
+    "away": 0.3332
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.6668,
+   "pPick": 0.6668,
+   "score": {
+    "home": 3,
+    "away": 2
+   },
+   "winner": "BEL",
+   "shootout": false
+  },
+  {
+   "id": 81,
+   "date": "2026-07-01",
+   "stage": "round_of_32",
+   "home": "ENG",
+   "away": "COD",
+   "neutral": true,
+   "p": {
+    "home": 0.8485,
+    "draw": 0,
+    "away": 0.1515
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.8485,
+   "pPick": 0.8485,
+   "score": {
+    "home": 2,
+    "away": 1
+   },
+   "winner": "ENG",
+   "shootout": false
+  },
+  {
+   "id": 82,
+   "date": "2026-07-01",
+   "stage": "round_of_32",
+   "home": "USA",
+   "away": "BIH",
+   "neutral": false,
+   "p": {
+    "home": 0.8059,
+    "draw": 0,
+    "away": 0.194
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.806,
+   "pPick": 0.806,
+   "score": {
+    "home": 2,
+    "away": 0
+   },
+   "winner": "USA",
+   "shootout": false
+  },
+  {
+   "id": 83,
+   "date": "2026-07-02",
+   "stage": "round_of_32",
+   "home": "ESP",
+   "away": "AUT",
+   "neutral": true,
+   "p": {
+    "home": 0.8242,
+    "draw": 0,
+    "away": 0.1758
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.8242,
+   "pPick": 0.8242,
+   "score": {
+    "home": 3,
+    "away": 0
+   },
+   "winner": "ESP",
+   "shootout": false
+  },
+  {
+   "id": 84,
+   "date": "2026-07-02",
+   "stage": "round_of_32",
+   "home": "POR",
+   "away": "CRO",
+   "neutral": true,
+   "p": {
+    "home": 0.7303,
+    "draw": 0,
+    "away": 0.2697
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7303,
+   "pPick": 0.7303,
+   "score": {
+    "home": 2,
+    "away": 1
+   },
+   "winner": "POR",
+   "shootout": false
+  },
+  {
+   "id": 85,
+   "date": "2026-07-02",
+   "stage": "round_of_32",
+   "home": "SUI",
+   "away": "ALG",
+   "neutral": true,
+   "p": {
+    "home": 0.5519,
+    "draw": 0,
+    "away": 0.4481
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.5519,
+   "pPick": 0.5519,
+   "score": {
+    "home": 2,
+    "away": 0
+   },
+   "winner": "SUI",
+   "shootout": false
+  },
+  {
+   "id": 86,
+   "date": "2026-07-03",
+   "stage": "round_of_32",
+   "home": "ARG",
+   "away": "CPV",
+   "neutral": true,
+   "p": {
+    "home": 0.9462,
+    "draw": 0,
+    "away": 0.0538
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.9462,
+   "pPick": 0.9462,
+   "score": {
+    "home": 3,
+    "away": 2
+   },
+   "winner": "ARG",
+   "shootout": false
+  },
+  {
+   "id": 87,
+   "date": "2026-07-03",
+   "stage": "round_of_32",
+   "home": "AUS",
+   "away": "EGY",
+   "neutral": true,
+   "p": {
+    "home": 0.5438,
+    "draw": 0,
+    "away": 0.4561
+   },
+   "pick": "home",
+   "outcome": "away",
+   "correct": false,
+   "pActual": 0.4561,
+   "pPick": 0.5439,
+   "score": {
+    "home": 1,
+    "away": 1
+   },
+   "winner": "EGY",
+   "shootout": true
+  },
+  {
+   "id": 88,
+   "date": "2026-07-03",
+   "stage": "round_of_32",
+   "home": "COL",
+   "away": "GHA",
+   "neutral": true,
+   "p": {
+    "home": 0.9701,
+    "draw": 0,
+    "away": 0.0299
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.9701,
+   "pPick": 0.9701,
+   "score": {
+    "home": 1,
+    "away": 0
+   },
+   "winner": "COL",
+   "shootout": false
+  },
+  {
+   "id": 89,
+   "date": "2026-07-04",
+   "stage": "round_of_16",
+   "home": "CAN",
+   "away": "MAR",
+   "neutral": true,
+   "p": {
+    "home": 0.4113,
+    "draw": 0,
+    "away": 0.5887
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5887,
+   "pPick": 0.5887,
+   "score": {
+    "home": 0,
+    "away": 3
+   },
+   "winner": "MAR",
+   "shootout": false
+  },
+  {
+   "id": 90,
+   "date": "2026-07-04",
+   "stage": "round_of_16",
+   "home": "PAR",
+   "away": "FRA",
+   "neutral": true,
+   "p": {
+    "home": 0.3583,
+    "draw": 0,
+    "away": 0.6417
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.6417,
+   "pPick": 0.6417,
+   "score": {
+    "home": 0,
+    "away": 1
+   },
+   "winner": "FRA",
+   "shootout": false
+  },
+  {
+   "id": 91,
+   "date": "2026-07-05",
+   "stage": "round_of_16",
+   "home": "BRA",
+   "away": "NOR",
+   "neutral": true,
+   "p": {
+    "home": 0.7306,
+    "draw": 0,
+    "away": 0.2695
+   },
+   "pick": "home",
+   "outcome": "away",
+   "correct": false,
+   "pActual": 0.2695,
+   "pPick": 0.7305,
+   "score": {
+    "home": 1,
+    "away": 2
+   },
+   "winner": "NOR",
+   "shootout": false
+  },
+  {
+   "id": 92,
+   "date": "2026-07-05",
+   "stage": "round_of_16",
+   "home": "MEX",
+   "away": "ENG",
+   "neutral": false,
+   "p": {
+    "home": 0.412,
+    "draw": 0,
+    "away": 0.588
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.588,
+   "pPick": 0.588,
+   "score": {
+    "home": 2,
+    "away": 3
+   },
+   "winner": "ENG",
+   "shootout": false
+  },
+  {
+   "id": 93,
+   "date": "2026-07-06",
+   "stage": "round_of_16",
+   "home": "POR",
+   "away": "ESP",
+   "neutral": true,
+   "p": {
+    "home": 0.3591,
+    "draw": 0,
+    "away": 0.6408
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.6409,
+   "pPick": 0.6409,
+   "score": {
+    "home": 0,
+    "away": 1
+   },
+   "winner": "ESP",
+   "shootout": false
+  },
+  {
+   "id": 94,
+   "date": "2026-07-06",
+   "stage": "round_of_16",
+   "home": "USA",
+   "away": "BEL",
+   "neutral": false,
+   "p": {
+    "home": 0.4398,
+    "draw": 0,
+    "away": 0.5602
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.5602,
+   "pPick": 0.5602,
+   "score": {
+    "home": 1,
+    "away": 4
+   },
+   "winner": "BEL",
+   "shootout": false
+  },
+  {
+   "id": 95,
+   "date": "2026-07-07",
+   "stage": "round_of_16",
+   "home": "ARG",
+   "away": "EGY",
+   "neutral": true,
+   "p": {
+    "home": 0.9022,
+    "draw": 0,
+    "away": 0.0978
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.9022,
+   "pPick": 0.9022,
+   "score": {
+    "home": 3,
+    "away": 2
+   },
+   "winner": "ARG",
+   "shootout": false
+  },
+  {
+   "id": 96,
+   "date": "2026-07-07",
+   "stage": "round_of_16",
+   "home": "SUI",
+   "away": "COL",
+   "neutral": true,
+   "p": {
+    "home": 0.3705,
+    "draw": 0,
+    "away": 0.6295
+   },
+   "pick": "away",
+   "outcome": "home",
+   "correct": false,
+   "pActual": 0.3705,
+   "pPick": 0.6295,
+   "score": {
+    "home": 0,
+    "away": 0
+   },
+   "winner": "SUI",
+   "shootout": true
+  },
+  {
+   "id": 97,
+   "date": "2026-07-09",
+   "stage": "quarter_final",
+   "home": "FRA",
+   "away": "MAR",
+   "neutral": true,
+   "p": {
+    "home": 0.7134,
+    "draw": 0,
+    "away": 0.2866
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7134,
+   "pPick": 0.7134,
+   "score": {
+    "home": 2,
+    "away": 0
+   },
+   "winner": "FRA",
+   "shootout": false
+  },
+  {
+   "id": 98,
+   "date": "2026-07-10",
+   "stage": "quarter_final",
+   "home": "ESP",
+   "away": "BEL",
+   "neutral": true,
+   "p": {
+    "home": 0.7893,
+    "draw": 0,
+    "away": 0.2107
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.7893,
+   "pPick": 0.7893,
+   "score": {
+    "home": 2,
+    "away": 1
+   },
+   "winner": "ESP",
+   "shootout": false
+  },
+  {
+   "id": 99,
+   "date": "2026-07-11",
+   "stage": "quarter_final",
+   "home": "ARG",
+   "away": "SUI",
+   "neutral": true,
+   "p": {
+    "home": 0.8102,
+    "draw": 0,
+    "away": 0.1897
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.8103,
+   "pPick": 0.8103,
+   "score": {
+    "home": 3,
+    "away": 1
+   },
+   "winner": "ARG",
+   "shootout": false
+  },
+  {
+   "id": 100,
+   "date": "2026-07-11",
+   "stage": "quarter_final",
+   "home": "NOR",
+   "away": "ENG",
+   "neutral": true,
+   "p": {
+    "home": 0.2778,
+    "draw": 0,
+    "away": 0.7223
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.7222,
+   "pPick": 0.7222,
+   "score": {
+    "home": 1,
+    "away": 2
+   },
+   "winner": "ENG",
+   "shootout": false
+  },
+  {
+   "id": 101,
+   "date": "2026-07-14",
+   "stage": "semi_final",
+   "home": "FRA",
+   "away": "ESP",
+   "neutral": true,
+   "p": {
+    "home": 0.422,
+    "draw": 0,
+    "away": 0.578
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.578,
+   "pPick": 0.578,
+   "score": {
+    "home": 0,
+    "away": 2
+   },
+   "winner": "ESP",
+   "shootout": false
+  },
+  {
+   "id": 102,
+   "date": "2026-07-15",
+   "stage": "semi_final",
+   "home": "ENG",
+   "away": "ARG",
+   "neutral": true,
+   "p": {
+    "home": 0.359,
+    "draw": 0,
+    "away": 0.641
+   },
+   "pick": "away",
+   "outcome": "away",
+   "correct": true,
+   "pActual": 0.641,
+   "pPick": 0.641,
+   "score": {
+    "home": 1,
+    "away": 2
+   },
+   "winner": "ARG",
+   "shootout": false
+  },
+  {
+   "id": 103,
+   "date": "2026-07-18",
+   "stage": "third_place",
+   "home": "FRA",
+   "away": "ENG",
+   "neutral": true,
+   "p": {
+    "home": 0.6257,
+    "draw": 0,
+    "away": 0.3743
+   },
+   "pick": "home",
+   "outcome": "away",
+   "correct": false,
+   "pActual": 0.3743,
+   "pPick": 0.6257,
+   "score": {
+    "home": 4,
+    "away": 6
+   },
+   "winner": "ENG",
+   "shootout": false
+  },
+  {
+   "id": 104,
+   "date": "2026-07-19",
+   "stage": "final",
+   "home": "ESP",
+   "away": "ARG",
+   "neutral": true,
+   "p": {
+    "home": 0.5052,
+    "draw": 0,
+    "away": 0.4947
+   },
+   "pick": "home",
+   "outcome": "home",
+   "correct": true,
+   "pActual": 0.5053,
+   "pPick": 0.5053,
+   "score": {
+    "home": 1,
+    "away": 0
+   },
+   "winner": "ESP",
+   "shootout": false
+  }
+ ],
+ "groups": [
+  {
+   "teams": [
+    "CZE",
+    "KOR",
+    "MEX",
+    "RSA"
+   ],
+   "matchIds": [
+    1,
+    2,
+    26,
+    27,
+    52,
+    53
+   ]
+  },
+  {
+   "teams": [
+    "AUS",
+    "PAR",
+    "TUR",
+    "USA"
+   ],
+   "matchIds": [
+    4,
+    5,
+    31,
+    32,
+    58,
+    60
+   ]
+  },
+  {
+   "teams": [
+    "BIH",
+    "CAN",
+    "QAT",
+    "SUI"
+   ],
+   "matchIds": [
+    3,
+    8,
+    25,
+    28,
+    49,
+    50
+   ]
+  },
+  {
+   "teams": [
+    "BRA",
+    "HAI",
+    "MAR",
+    "SCO"
+   ],
+   "matchIds": [
+    6,
+    7,
+    29,
+    30,
+    51,
+    54
+   ]
+  },
+  {
+   "teams": [
+    "CIV",
+    "CUW",
+    "ECU",
+    "GER"
+   ],
+   "matchIds": [
+    9,
+    10,
+    33,
+    34,
+    55,
+    56
+   ]
+  },
+  {
+   "teams": [
+    "JPN",
+    "NED",
+    "SWE",
+    "TUN"
+   ],
+   "matchIds": [
+    11,
+    12,
+    35,
+    36,
+    57,
+    59
+   ]
+  },
+  {
+   "teams": [
+    "BEL",
+    "EGY",
+    "IRN",
+    "NZL"
+   ],
+   "matchIds": [
+    13,
+    15,
+    37,
+    39,
+    62,
+    64
+   ]
+  },
+  {
+   "teams": [
+    "CPV",
+    "ESP",
+    "KSA",
+    "URU"
+   ],
+   "matchIds": [
+    14,
+    16,
+    38,
+    40,
+    61,
+    66
+   ]
+  },
+  {
+   "teams": [
+    "ALG",
+    "ARG",
+    "AUT",
+    "JOR"
+   ],
+   "matchIds": [
+    17,
+    18,
+    41,
+    43,
+    67,
+    71
+   ]
+  },
+  {
+   "teams": [
+    "FRA",
+    "IRQ",
+    "NOR",
+    "SEN"
+   ],
+   "matchIds": [
+    19,
+    20,
+    42,
+    44,
+    63,
+    65
+   ]
+  },
+  {
+   "teams": [
+    "COD",
+    "COL",
+    "POR",
+    "UZB"
+   ],
+   "matchIds": [
+    23,
+    24,
+    45,
+    48,
+    68,
+    69
+   ]
+  },
+  {
+   "teams": [
+    "CRO",
+    "ENG",
+    "GHA",
+    "PAN"
+   ],
+   "matchIds": [
+    21,
+    22,
+    46,
+    47,
+    70,
+    72
+   ]
+  }
+ ],
+ "teams": [
+  {
+   "code": "ALG",
+   "name": "Algeria",
+   "confederation": "CAF"
+  },
+  {
+   "code": "ARG",
+   "name": "Argentina",
+   "confederation": "CONMEBOL"
+  },
+  {
+   "code": "AUS",
+   "name": "Australia",
+   "confederation": "AFC"
+  },
+  {
+   "code": "AUT",
+   "name": "Austria",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "BEL",
+   "name": "Belgium",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "BIH",
+   "name": "Bosnia and Herzegovina",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "BRA",
+   "name": "Brazil",
+   "confederation": "CONMEBOL"
+  },
+  {
+   "code": "CAN",
+   "name": "Canada",
+   "confederation": "CONCACAF"
+  },
+  {
+   "code": "CIV",
+   "name": "Côte d'Ivoire",
+   "confederation": "CAF"
+  },
+  {
+   "code": "COD",
+   "name": "Congo DR",
+   "confederation": "CAF"
+  },
+  {
+   "code": "COL",
+   "name": "Colombia",
+   "confederation": "CONMEBOL"
+  },
+  {
+   "code": "CPV",
+   "name": "Cabo Verde",
+   "confederation": "CAF"
+  },
+  {
+   "code": "CRO",
+   "name": "Croatia",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "CUW",
+   "name": "Curaçao",
+   "confederation": "CONCACAF"
+  },
+  {
+   "code": "CZE",
+   "name": "Czechia",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "ECU",
+   "name": "Ecuador",
+   "confederation": "CONMEBOL"
+  },
+  {
+   "code": "EGY",
+   "name": "Egypt",
+   "confederation": "CAF"
+  },
+  {
+   "code": "ENG",
+   "name": "England",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "ESP",
+   "name": "Spain",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "FRA",
+   "name": "France",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "GER",
+   "name": "Germany",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "GHA",
+   "name": "Ghana",
+   "confederation": "CAF"
+  },
+  {
+   "code": "HAI",
+   "name": "Haiti",
+   "confederation": "CONCACAF"
+  },
+  {
+   "code": "IRN",
+   "name": "Iran",
+   "confederation": "AFC"
+  },
+  {
+   "code": "IRQ",
+   "name": "Iraq",
+   "confederation": "AFC"
+  },
+  {
+   "code": "JOR",
+   "name": "Jordan",
+   "confederation": "AFC"
+  },
+  {
+   "code": "JPN",
+   "name": "Japan",
+   "confederation": "AFC"
+  },
+  {
+   "code": "KOR",
+   "name": "South Korea",
+   "confederation": "AFC"
+  },
+  {
+   "code": "KSA",
+   "name": "Saudi Arabia",
+   "confederation": "AFC"
+  },
+  {
+   "code": "MAR",
+   "name": "Morocco",
+   "confederation": "CAF"
+  },
+  {
+   "code": "MEX",
+   "name": "Mexico",
+   "confederation": "CONCACAF"
+  },
+  {
+   "code": "NED",
+   "name": "Netherlands",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "NOR",
+   "name": "Norway",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "NZL",
+   "name": "New Zealand",
+   "confederation": "OFC"
+  },
+  {
+   "code": "PAN",
+   "name": "Panama",
+   "confederation": "CONCACAF"
+  },
+  {
+   "code": "PAR",
+   "name": "Paraguay",
+   "confederation": "CONMEBOL"
+  },
+  {
+   "code": "POR",
+   "name": "Portugal",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "QAT",
+   "name": "Qatar",
+   "confederation": "AFC"
+  },
+  {
+   "code": "RSA",
+   "name": "South Africa",
+   "confederation": "CAF"
+  },
+  {
+   "code": "SCO",
+   "name": "Scotland",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "SEN",
+   "name": "Senegal",
+   "confederation": "CAF"
+  },
+  {
+   "code": "SUI",
+   "name": "Switzerland",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "SWE",
+   "name": "Sweden",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "TUN",
+   "name": "Tunisia",
+   "confederation": "CAF"
+  },
+  {
+   "code": "TUR",
+   "name": "Türkiye",
+   "confederation": "UEFA"
+  },
+  {
+   "code": "URU",
+   "name": "Uruguay",
+   "confederation": "CONMEBOL"
+  },
+  {
+   "code": "USA",
+   "name": "United States",
+   "confederation": "CONCACAF"
+  },
+  {
+   "code": "UZB",
+   "name": "Uzbekistan",
+   "confederation": "AFC"
+  }
+ ]
+}
