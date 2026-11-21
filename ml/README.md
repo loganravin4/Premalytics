@@ -158,6 +158,18 @@ Typical baselines for EPL:
 | Gradient boosting | ~0.55 | ~0.91 |
 | Betting market implied | ~0.58 | ~0.86 |
 
+## Walk-forward backtest (ML-01 → ML-05)
+
+```bash
+python -m ml.pipeline.backtest            # every major tournament 2014-2026
+python -m ml.pipeline.train_ensemble      # attach GBM + Dixon-Coles blend to the latest run
+```
+
+Writes `ml/artifacts/backtest_<timestamp>/` (`metrics.json`, `predictions.csv`,
+`reliability.json`, `summary.md`). Results and the served-model decision are in
+`docs/ML_EXPERIMENTS.md`. For retrospectives, run `predict.py --as-of <tournament start>`
+so no fixture reads form from matches on or after that date.
+
 ## Running Tests
 
 ```bash
