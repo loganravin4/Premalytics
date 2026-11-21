@@ -45,7 +45,7 @@ export interface Summary {
   raw: {
     nTrain: number;
     nFeatures: number;
-    gbm: { accuracy: number; log_loss: number };
+    strict: { accuracy: number; log_loss: number };
     rps: number;
   };
 }

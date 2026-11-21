@@ -264,7 +264,7 @@ Running-head column heads above a 2px ink rule, hairline rows, numbers right-ali
 - **Do** strike every miss with the strike-weight scale (1px at 34%, maximum at 80%).
 - **Do** open lists and tables with a 2px ink rule and separate rows with 1px hairlines.
 - **Do** put a running head naming the volume at the top of every page.
-- **Do** state the scoring mode and denominator next to every headline number ("70/104", "shootout-credited").
+- **Do** state the scoring mode and denominator next to every headline number ("68/104", "shootout-credited").
 - **Do** set large record numbers in Archivo at 62% width, weight 850, line-height 0.85.
 - **Do** keep dark mode as the same tokens reprinted on `dark-paper`, preserving the brightness order of spot, mid tint, light tint.
 

@@ -44,7 +44,8 @@ Pre-tournament probabilities for all 104 WC 2026 matches, scored against what ha
 
 ## Evidence on Hand
 
-- WC 2026 scored predictions (leak-free run `20261121_144113`, form frozen at 11 June 2026): 104 matches, 70 correct (67.3%) shootout-credited, log loss 0.764; strict 66.3%, log loss 0.861. By stage: group 44/72, R32 13/16, R16 6/8, QF 4/4, SF 2/2, third place 0/1, final 1/1.
+- WC 2026 scored predictions, served blend model (leak-free run `20261121_144554`, form frozen at 11 June 2026): 104 matches, 68 correct (65.4%) shootout-credited, log loss 0.732; strict 65.4%, log loss 0.815. The previous GBM model's leak-free record was 70/104, log loss 0.764 / 0.861 strict.
+- Walk-forward backtest, 27 tournaments 2014–2026 (1,150 matches): blend RPS 0.1802, previous GBM 0.1850, Elo logistic 0.1854 (`docs/ML_EXPERIMENTS.md`).
 - The earlier 72/104 (69%, log loss 0.681) figure leaked in-tournament form and must not be quoted.
 - Training: 30,417 matches, 123 features.
 - Shot xG: Brier 0.087 on 1,417 WC 2022 shots.
