@@ -10,13 +10,14 @@ If lightgbm is installed, LGBMClassifier is used instead (faster, better
 calibrated out-of-the-box). Install with: pip install lightgbm
 """
 
+import json
 import logging
 
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.calibration import CalibratedClassifierCV
 
-from ml.config import RANDOM_SEED
+from ml.config import RANDOM_SEED, ARTIFACTS_DIR
 
 try:
     from lightgbm import LGBMClassifier
@@ -95,6 +96,55 @@ def _try_lightgbm(
         return make_hgb_pipeline(calibrate=calibrate)
 
 
+# Sensible XGBoost defaults (pre-tuning). Phase 3 overrides these with the
+# Optuna-tuned params persisted at ml/artifacts/best_xgb_params.json.
+XGB_DEFAULTS = {
+    "eval_metric": "mlogloss",
+    "use_label_encoder": False,
+    "random_state": RANDOM_SEED,
+    "n_estimators": 500,
+    "learning_rate": 0.05,
+    "max_depth": 6,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 3,
+}
+
+
 def make_best_boosting_pipeline(calibrate: bool = True) -> Pipeline:
-    """Return the best available boosting pipeline (LightGBM > HistGBM)."""
-    return _try_lightgbm(calibrate=calibrate)
+    """
+    Return the best available boosting pipeline.
+
+    Primary: XGBoost (XGBClassifier). If ml/artifacts/best_xgb_params.json
+    exists (written by ml.pipeline.tune_match_model), those tuned params are
+    merged over XGB_DEFAULTS. Falls back to HistGradientBoosting when xgboost
+    is not installed.
+    """
+    try:
+        from xgboost import XGBClassifier
+    except ImportError:
+        logger.info("xgboost not installed — falling back to HistGradientBoosting")
+        return make_hgb_pipeline(calibrate=calibrate)
+
+    params = dict(XGB_DEFAULTS)
+    tuned_path = ARTIFACTS_DIR / "best_xgb_params.json"
+    if tuned_path.exists():
+        tuned = json.loads(tuned_path.read_text())
+        params.update(tuned)
+        # Always keep the invariant, reproducibility, and label-encoder flags.
+        params.update({
+            "eval_metric": "mlogloss",
+            "use_label_encoder": False,
+            "random_state": RANDOM_SEED,
+        })
+        logger.info("Using XGBoost classifier (TUNED params from %s)", tuned_path.name)
+    else:
+        logger.info("Using XGBoost classifier (default params — run "
+                    "tune_match_model for tuned params)")
+
+    xgb = XGBClassifier(**params)
+    if calibrate:
+        clf = CalibratedClassifierCV(xgb, cv=3, method="isotonic")
+    else:
+        clf = xgb
+    return Pipeline([("clf", clf)])

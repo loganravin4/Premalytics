@@ -81,7 +81,36 @@ MIN_MATCHES_REQUIRED = 1           # min_periods for rolling (allows early-tourn
 
 # ELO rating system
 ELO_INITIAL  = 1500.0   # Starting ELO for every team before their first recorded match
-ELO_K_FACTOR = 20.0     # Update magnitude per match (standard football value)
+ELO_K_FACTOR = 20.0     # Default/fallback update magnitude (unmapped competitions)
+
+# Tournament-specific ELO K factors: a World Cup win should move ratings more
+# than a friendly. compute_elo_features() looks up the row's competition_id
+# here, falling back to ELO_K_FACTOR when absent. Higher K = faster rating
+# response for higher-stakes competitions.
+K_FACTORS = {
+    "fifa_world_cup":      60,
+    "uefa_euro":           50,
+    "copa_america":        50,
+    "afcon":               45,
+    "afc_asian_cup":       45,
+    "concacaf_gold_cup":   40,
+    "uefa_nations_league": 35,
+    "qualifier":           30,
+    "friendly":            15,
+    "other_tournament":    25,
+}
+
+# ---------------------------------------------------------------------------
+# Draw probability calibration (post-processing, applied in predict.py)
+# ---------------------------------------------------------------------------
+# The gradient boosting model systematically underweights draw probability
+# when one team is a heavy favorite (a known ELO-based-model issue). When the
+# favorite's raw probability exceeds DRAW_CALIBRATION_THRESHOLD, that much of
+# its mass past the threshold is shifted to the draw, scaled by
+# DRAW_CALIBRATION_ALPHA. Values chosen by grid search over the WC 2026
+# holdout — see ml/pipeline/tune_draw_calibration.py.
+DRAW_CALIBRATION_THRESHOLD = 0.75
+DRAW_CALIBRATION_ALPHA = 0.60
 
 # ---------------------------------------------------------------------------
 # Model target

@@ -35,12 +35,72 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from ml.config import ARTIFACTS_DIR, TARGET_ENCODE, LOG_FORMAT
+from ml.config import (
+    ARTIFACTS_DIR, TARGET_ENCODE, LOG_FORMAT,
+    DRAW_CALIBRATION_THRESHOLD, DRAW_CALIBRATION_ALPHA,
+)
 
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
 REQUIRED_FIXTURE_COLS = {"match_date", "home_team", "away_team"}
+
+
+def _apply_draw_calibration(
+    p_home: float,
+    p_draw: float,
+    p_away: float,
+    threshold: float,
+    alpha: float,
+) -> tuple[float, float, float]:
+    """
+    When the favorite's probability exceeds threshold, redistribute
+    alpha * (p_favorite - threshold) probability mass to the draw.
+    The favorite's probability is reduced by the same amount.
+    The other team's probability is unchanged.
+    Renormalize to sum to 1.0.
+    """
+    home_is_favorite = p_home >= p_away
+    favorite = p_home if home_is_favorite else p_away
+
+    if favorite > threshold:
+        shift = alpha * (favorite - threshold)
+        favorite -= shift
+        p_draw += shift
+
+    if home_is_favorite:
+        p_home = favorite
+    else:
+        p_away = favorite
+
+    total = p_home + p_draw + p_away
+    if total > 0:
+        p_home, p_draw, p_away = p_home / total, p_draw / total, p_away / total
+    return p_home, p_draw, p_away
+
+
+def _apply_knockout_redistribution(
+    p_home: float,
+    p_draw: float,
+    p_away: float,
+    home_xg: float,
+    away_xg: float,
+) -> tuple[float, float, float]:
+    """
+    Knockout matches cannot end in a draw — a level match goes to extra time,
+    then penalties, and one team advances. Redistribute the draw probability
+    onto the two teams in proportion to their expected goals, yielding
+    advance probabilities. Mirrors ml.pipeline.predict_knockout's formula so
+    the two pipelines can't drift apart.
+    """
+    total_xg = home_xg + away_xg
+    if total_xg > 0:
+        share_home, share_away = home_xg / total_xg, away_xg / total_xg
+    else:
+        share_home = share_away = 0.5
+    p_home_adv = p_home + p_draw * share_home
+    p_away_adv = p_away + p_draw * share_away
+    return p_home_adv, 0.0, p_away_adv
 
 
 def _resolve_run_dir(run_id: str | None) -> Path:
@@ -102,12 +162,22 @@ def _fixture_feature_row(features: pd.DataFrame, feature_cols: list[str],
     return row
 
 
-def predict_match_outcomes(fixtures: pd.DataFrame, run_id: str | None = None) -> list[dict]:
+def predict_match_outcomes(
+    fixtures: pd.DataFrame,
+    run_id: str | None = None,
+    score_run_id: str | None = None,
+) -> list[dict]:
     """
     Return match-outcome probabilities for each fixture row.
 
     Output: one dict per fixture with home_team, away_team, p_home_win,
     p_draw, p_away_win. Reusable by other pipelines (e.g. predict_knockout).
+
+    Knockout-stage fixtures (competition_stage != "group") cannot end in a
+    draw — a level match goes to extra time then penalties. For those rows
+    p_draw is redistributed onto p_home_win/p_away_win by expected-goals
+    share (see _apply_knockout_redistribution), so p_draw is always 0.0 and
+    the two win probabilities are effectively advance probabilities.
     """
     run_dir = _resolve_run_dir(run_id)
 
@@ -125,6 +195,22 @@ def predict_match_outcomes(fixtures: pd.DataFrame, run_id: str | None = None) ->
     proba = model.predict_proba(X)
     classes = list(model.classes_)  # encoded ints, sorted: [0, 1, 2]
 
+    if "competition_stage" in fixtures.columns:
+        knockout_mask = (
+            fixtures["competition_stage"].fillna("group").astype(str)
+            .str.strip().str.lower() != "group"
+        ).tolist()
+    else:
+        knockout_mask = [False] * len(fixtures)
+
+    xg_by_row: dict[int, tuple[float, float]] = {}
+    if any(knockout_mask):
+        # Lazy import: predict_scores imports from this module at load time,
+        # so importing it eagerly at module scope would be circular.
+        from ml.pipeline.predict_scores import score_fixtures
+        scores = score_fixtures(fixtures, run_id=score_run_id)
+        xg_by_row = {i: (s["home_xg"], s["away_xg"]) for i, s in enumerate(scores)}
+
     predictions = []
     for i, (f, p) in enumerate(zip(fixtures.itertuples(), proba)):
         # Null-safe guard: a degenerate / all-zero feature row can yield NaN
@@ -141,6 +227,18 @@ def predict_match_outcomes(fixtures: pd.DataFrame, run_id: str | None = None) ->
         all_zero = all(v == 0.0 for v in rows[i].values())
         if all_zero or (p_home + p_draw + p_away) == 0.0:
             p_home = p_draw = p_away = 0.333
+        elif knockout_mask[i]:
+            home_xg, away_xg = xg_by_row[i]
+            p_home, p_draw, p_away = _apply_knockout_redistribution(
+                p_home, p_draw, p_away, home_xg, away_xg,
+            )
+            p_home, p_draw, p_away = round(p_home, 4), round(p_draw, 4), round(p_away, 4)
+        else:
+            p_home, p_draw, p_away = _apply_draw_calibration(
+                p_home, p_draw, p_away,
+                DRAW_CALIBRATION_THRESHOLD, DRAW_CALIBRATION_ALPHA,
+            )
+            p_home, p_draw, p_away = round(p_home, 4), round(p_draw, 4), round(p_away, 4)
 
         predictions.append({
             "home_team":  f.home_team,
@@ -169,10 +267,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Predict WC fixtures")
     parser.add_argument("--fixtures", required=True, help="CSV of fixtures to predict")
     parser.add_argument("--run-id", default=None, help="Run ID (default: latest)")
+    parser.add_argument("--score-run-id", default=None,
+                        help="Score run ID for knockout-fixture xG redistribution "
+                             "(default: latest)")
     args = parser.parse_args()
 
     fixtures = load_fixtures(args.fixtures)
-    predictions = predict_match_outcomes(fixtures, run_id=args.run_id)
+    predictions = predict_match_outcomes(
+        fixtures, run_id=args.run_id, score_run_id=args.score_run_id,
+    )
     print(json.dumps(predictions, indent=2))
 
 

@@ -223,12 +223,15 @@ OUTCOMES = ["home", "draw", "away"]
 RESULT_TO_OUTCOME = {"W": "home", "D": "draw", "L": "away"}
 
 
-def annotate(df: pd.DataFrame, credit_shootout: bool = False) -> pd.DataFrame:
+def annotate(df: pd.DataFrame, credit_shootout: bool = True) -> pd.DataFrame:
     """Add predicted outcome, actual outcome, correctness, and probability views.
 
-    When credit_shootout is True, knockout matches level on goals (result=D)
+    Draws are not a real final outcome in knockout football — a level match
+    goes to extra time, then penalties, and someone advances. So by default
+    (credit_shootout=True), knockout-stage matches level on goals (result=D)
     are re-labelled to the team that advanced on penalties (from the `winner`
-    column) instead of counting as draws.
+    column) instead of counting as draws. Group-stage rows are never
+    relabeled — a draw there is a genuine final outcome.
     """
     df = df.copy()
 
@@ -250,7 +253,8 @@ def annotate(df: pd.DataFrame, credit_shootout: bool = False) -> pd.DataFrame:
     if credit_shootout and "winner" in df.columns:
         def credited(r):
             w = r.winner
-            if r.result == "D" and pd.notna(w) and str(w).strip():
+            is_knockout = str(r.competition_stage).strip().lower() != "group"
+            if is_knockout and r.result == "D" and pd.notna(w) and str(w).strip():
                 if str(w).strip() == r.home_team:
                     return "home"
                 if str(w).strip() == r.away_team:
@@ -525,9 +529,16 @@ def save_versioned(df: pd.DataFrame, metrics: dict) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Score WC 2026 predictions")
     parser.add_argument(
-        "--credit-shootout-winner", action="store_true",
+        "--credit-shootout-winner", dest="credit_shootout_winner",
+        action="store_true", default=True,
         help="Score knockout matches level on goals against the team that "
-             "advanced on penalties (default: goals-based, shootouts = draws).",
+             "advanced on penalties (default: on).",
+    )
+    parser.add_argument(
+        "--no-credit-shootout-winner", dest="credit_shootout_winner",
+        action="store_false",
+        help="Disable shootout crediting; score every level knockout match "
+             "goals-based, i.e. as a draw (old behavior, for comparison).",
     )
     args = parser.parse_args()
 

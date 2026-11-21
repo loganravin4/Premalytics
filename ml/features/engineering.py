@@ -19,6 +19,7 @@ import pandas as pd
 
 from ml.config import (
     ROLLING_WINDOWS, MIN_MATCHES_REQUIRED, ELO_INITIAL, ELO_K_FACTOR, STATIC_DIR,
+    K_FACTORS, DATA_DIR,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,55 @@ logger = logging.getLogger(__name__)
 # Static mapping of FIFA team_id -> confederation, loaded once from
 # team_map_intl.csv. Any team_id absent from the map defaults to "OTHER".
 TEAM_MAP_CSV = STATIC_DIR / "team_map_intl.csv"
+
+# API-Football possession stats (PHASE 5) live under one CSV per comp/season.
+API_FOOTBALL_DIR = DATA_DIR / "api_football"
+
+
+def _load_team_code_map() -> dict[str, str]:
+    """Lower-cased provider name (alias or full_name) -> FIFA 3-letter code."""
+    if not TEAM_MAP_CSV.exists():
+        return {}
+    tm = pd.read_csv(TEAM_MAP_CSV)
+    mapping: dict[str, str] = {}
+    for _, row in tm.iterrows():
+        code = str(row.get("team_id", "")).strip().upper()
+        if not code:
+            continue
+        for col in ("alias", "full_name"):
+            name = str(row.get(col, "")).strip().lower()
+            if name and name != "nan":
+                mapping.setdefault(name, code)
+    return mapping
+
+
+def _load_possession() -> pd.DataFrame:
+    """
+    Concatenate every api_football/*/*/possession_stats.csv, mapping provider
+    team names to FIFA codes. Returns columns [_dstr, team_id, possession_pct,
+    passes_accuracy], one row per (date, team). Empty frame if none on disk.
+    """
+    cols = ["_dstr", "team_id", "possession_pct", "passes_accuracy"]
+    if not API_FOOTBALL_DIR.exists():
+        return pd.DataFrame(columns=cols)
+    files = sorted(API_FOOTBALL_DIR.glob("*/*/possession_stats.csv"))
+    if not files:
+        return pd.DataFrame(columns=cols)
+
+    name2code = _load_team_code_map()
+    frames = [pd.read_csv(f) for f in files]
+    allp = pd.concat(frames, ignore_index=True)
+    allp["team_id"] = (allp["team_name"].astype(str).str.strip().str.lower()
+                       .map(name2code))
+    unmapped = allp["team_id"].isna().sum()
+    if unmapped:
+        logger.info("Possession: %d rows with unmapped team names skipped", int(unmapped))
+    allp = allp.dropna(subset=["team_id"])
+    allp["_dstr"] = allp["match_date"].astype(str).str[:10]
+    allp["possession_pct"] = pd.to_numeric(allp["possession_pct"], errors="coerce")
+    allp["passes_accuracy"] = pd.to_numeric(allp["passes_accuracy"], errors="coerce")
+    allp = allp.drop_duplicates(subset=["_dstr", "team_id"])
+    return allp[cols]
 
 
 def _load_confederation_map() -> dict[str, str]:
@@ -205,6 +255,10 @@ def compute_elo_features(df: pd.DataFrame) -> pd.DataFrame:
         E_home = 1 / (1 + 10^((elo_away - elo_home) / 400))
         new_elo = elo + K * (actual - E)
         actual: W=1.0, D=0.5, L=0.0
+
+    K is competition-aware (config.K_FACTORS): a World Cup result moves ratings
+    far more than a friendly. Rows whose competition_id is absent/unmapped fall
+    back to config.ELO_K_FACTOR.
     """
     df = df.copy()
 
@@ -238,8 +292,10 @@ def compute_elo_features(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 actual_home = 0.0
 
-            elos[home_team] = h_elo + ELO_K_FACTOR * (actual_home - expected_home)
-            elos[away_team] = a_elo + ELO_K_FACTOR * ((1.0 - actual_home) - (1.0 - expected_home))
+            # Competition-aware K (friendly=15 ... world_cup=60); fallback 20.
+            k = K_FACTORS.get(row.get("competition_id"), ELO_K_FACTOR)
+            elos[home_team] = h_elo + k * (actual_home - expected_home)
+            elos[away_team] = a_elo + k * ((1.0 - actual_home) - (1.0 - expected_home))
 
     df["elo"] = [
         pre_match_elo.get((mid, tid), ELO_INITIAL)
@@ -266,6 +322,7 @@ def _add_diff_features(df: pd.DataFrame) -> pd.DataFrame:
         "xgf_avg_5", "xga_avg_5",
         "season_pts_rate",
         "elo",
+        "possession_avg_5",
     ]
     for base in diff_bases:
         home_col = f"home_{base}"
@@ -302,6 +359,32 @@ def build_team_features(df: pd.DataFrame) -> pd.DataFrame:
     result["confederation"] = (
         result["team_id"].map(conf_map).fillna("OTHER").astype(str)
     )
+
+    # Possession features from API-Football (PHASE 5/6). Nullable: only the
+    # competitions we fetched have coverage; everything else stays NaN and is
+    # filled to 0.0 in train.build_xy. Rolling means use shift(1) for leakage
+    # safety (a match's own possession never enters its own features).
+    poss = _load_possession()
+    result["_dstr"] = result["match_date"].dt.strftime("%Y-%m-%d")
+    if not poss.empty:
+        result = result.merge(poss, on=["_dstr", "team_id"], how="left")
+        logger.info("Possession: joined %d team-match observations", int(poss.shape[0]))
+    else:
+        result["possession_pct"] = np.nan
+        result["passes_accuracy"] = np.nan
+        logger.info("Possession: no API-Football data found — features will be NULL")
+
+    result = result.sort_values(["team_id", "match_date"])
+    grp = result.groupby("team_id", sort=False)
+    for N in (3, 5):
+        result[f"possession_avg_{N}"] = grp["possession_pct"].transform(
+            lambda s: s.shift(1).rolling(N, min_periods=1).mean())
+        result[f"passes_acc_avg_{N}"] = grp["passes_accuracy"].transform(
+            lambda s: s.shift(1).rolling(N, min_periods=1).mean())
+    # Drop the raw same-match observations (post-match info — must not leak as
+    # features) and the join helper column.
+    result = result.drop(columns=["possession_pct", "passes_accuracy", "_dstr"])
+    result = result.sort_values(["match_date", "match_id", "team_id"]).reset_index(drop=True)
 
     logger.info(f"Team features computed. Shape: {result.shape}")
     return result
