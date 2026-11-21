@@ -47,6 +47,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = Path(__file__).resolve().parent          # .../data-pipeline/scripts/
@@ -60,6 +61,10 @@ ACTUAL_CSV = DATA_DIR / "wc2026_actual_results.csv"
 TEAM_MAP_CSV = DATA_DIR / "static" / "team_map_intl.csv"
 SHOOTOUTS_CSV = DATA_DIR / "raw" / "martj42" / "shootouts.csv"
 LATEST_RUN_TXT = PROJECT_ROOT / "ml" / "artifacts" / "latest_run.txt"
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from ml.models import metrics as M  # noqa: E402
 EVAL_OUT_ROOT = DATA_DIR / "evaluation" / "wc2026"
 
 # Stage display order + friendly labels for the report.
@@ -181,13 +186,13 @@ def ensure_winner_column() -> None:
     actual.to_csv(ACTUAL_CSV, index=False)
 
 
-def load_joined() -> pd.DataFrame:
+def load_joined(pred_json: Path = PRED_JSON) -> pd.DataFrame:
     """Load predictions + actuals and return one row per match, key-joined."""
-    for p in (PRED_JSON, FIXTURES_CSV, ACTUAL_CSV):
+    for p in (pred_json, FIXTURES_CSV, ACTUAL_CSV):
         if not p.exists():
             sys.exit(f"ERROR: missing required input {p}")
 
-    preds = pd.DataFrame(json.loads(PRED_JSON.read_text(encoding="utf-8")))
+    preds = pd.DataFrame(json.loads(pred_json.read_text(encoding="utf-8")))
     fixtures = pd.read_csv(FIXTURES_CSV, comment="#")
     actual = pd.read_csv(ACTUAL_CSV)
 
@@ -277,6 +282,65 @@ def log_loss(df: pd.DataFrame) -> float:
     eps = 1e-15
     ll = -df["p_actual"].clip(lower=eps).map(math.log)
     return float(ll.mean())
+
+
+RAW_COLS = ["p_home_win_raw", "p_draw_raw", "p_away_win_raw"]
+SHIPPED_COLS = ["p_home_win", "p_draw", "p_away_win"]
+
+
+def side_by_side(joined: pd.DataFrame) -> dict:
+    """
+    Raw and shootout-credited metrics for the same predictions (ML-02).
+
+    raw: the model's own W/D/L probabilities (the *_raw columns written by
+         predict.py --include-raw, i.e. before knockout redistribution and draw
+         calibration) scored goals-based, so a shootout counts as a draw.
+    shootout_credited: the shipped probabilities (knockout draw mass already
+         redistributed) scored against the team that advanced.
+    Falls back to the shipped columns for raw when *_raw columns are absent.
+    """
+    y_raw = joined["result"].map({"W": M.HOME, "D": M.DRAW, "L": M.AWAY}).to_numpy()
+    raw_cols = RAW_COLS if set(RAW_COLS) <= set(joined.columns) else SHIPPED_COLS
+    p_raw = joined[raw_cols].astype(float).to_numpy()
+    p_ship = joined[SHIPPED_COLS].astype(float).to_numpy()
+
+    cred = annotate(joined, credit_shootout=True)
+    y_cred = cred["actual_outcome"].map({"home": M.HOME, "draw": M.DRAW,
+                                         "away": M.AWAY}).to_numpy()
+    raw = M.score(p_raw, y_raw, with_reliability=True)
+    shipped_goals = M.score(p_ship, y_raw)
+    credited = M.score(p_ship, y_cred)
+    return {
+        "raw_probability_columns": raw_cols,
+        "log_loss_raw": raw["log_loss"],
+        "log_loss_shootout_credited": credited["log_loss"],
+        "accuracy_raw": raw["accuracy"],
+        "accuracy_shootout_credited": credited["accuracy"],
+        "rps": raw["rps"],
+        "rps_shootout_credited": credited["rps"],
+        "brier": raw["brier"],
+        "brier_shootout_credited": credited["brier"],
+        "draw_recall": raw["draw_recall"],
+        "reliability": raw["reliability"],
+        "shipped_probs_goals_based": {k: shipped_goals[k] for k in
+                                      ("accuracy", "log_loss", "rps", "brier")},
+    }
+
+
+def report_side_by_side(sbs: dict) -> None:
+    hr("RAW vs SHOOTOUT-CREDITED (always reported together)")
+    line("raw = model probabilities before knockout redistribution, shootouts count")
+    line("as draws. credited = shipped probabilities, shootouts scored for the team")
+    line("that advanced. The two are not comparable; quote both.")
+    rows = [
+        ["Accuracy", pct(sbs["accuracy_raw"]), pct(sbs["accuracy_shootout_credited"])],
+        ["Log loss", f"{sbs['log_loss_raw']:.4f}", f"{sbs['log_loss_shootout_credited']:.4f}"],
+        ["RPS", f"{sbs['rps']:.4f}", f"{sbs['rps_shootout_credited']:.4f}"],
+        ["Brier", f"{sbs['brier']:.4f}", f"{sbs['brier_shootout_credited']:.4f}"],
+    ]
+    render_table("Raw vs credited", ["Metric", "Raw", "Shootout-credited"], rows)
+    line(f"Draw recall (raw): {sbs['draw_recall']:.2f}   "
+         f"mean per-class ECE (raw): {sbs['reliability']['ece_mean']:.4f}")
 
 
 # ---------------------------------------------------------------------------
@@ -540,13 +604,21 @@ def main() -> None:
         help="Disable shootout crediting; score every level knockout match "
              "goals-based, i.e. as a draw (old behavior, for comparison).",
     )
+    parser.add_argument(
+        "--predictions", default=str(PRED_JSON),
+        help="Predictions JSON to score (default: data-pipeline/data/wc2026_predictions.json)",
+    )
     args = parser.parse_args()
 
     names = load_team_names()
     ensure_winner_column()
-    df = annotate(load_joined(), credit_shootout=args.credit_shootout_winner)
+    joined = load_joined(Path(args.predictions))
+    df = annotate(joined, credit_shootout=args.credit_shootout_winner)
 
     metrics = build_report(df, names, credit_shootout=args.credit_shootout_winner)
+    sbs = side_by_side(joined)
+    report_side_by_side(sbs)
+    metrics.update(sbs)
     out_dir = save_versioned(df, metrics)
 
     rel = out_dir.relative_to(PROJECT_ROOT).as_posix()
