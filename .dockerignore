@@ -1,0 +1,15 @@
+# Build context for ml/serve/Dockerfile (repo root). Keep it small: code only.
+**/node_modules
+**/venv
+**/__pycache__
+**/.pytest_cache
+.git
+.claude
+frontend
+backend
+database
+docs
+ml/artifacts
+data-pipeline/data
+.env
+.env.*

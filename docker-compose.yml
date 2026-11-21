@@ -1,0 +1,87 @@
+# Neutral Ground local stack: Postgres, the Spring API, and the ml-serve inference service.
+#
+#   docker compose up --build                          # api on :8080, docs at /api/docs
+#   docker compose --profile tools run --rm publish    # load the WC 2026 run into Postgres
+#
+# ml-serve and publish read trained models from ./ml/artifacts (gitignored; train or copy them first).
+name: neutral-ground
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-neutral_ground}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ml-serve:
+    build:
+      context: .
+      dockerfile: ml/serve/Dockerfile
+    image: neutral-ground/ml-serve:local
+    environment:
+      NG_MATCH_RUN_ID: ${NG_MATCH_RUN_ID:-}
+      NG_SCORE_RUN_ID: ${NG_SCORE_RUN_ID:-}
+      NG_SHOT_RUN_ID: ${NG_SHOT_RUN_ID:-}
+    volumes:
+      - ./ml/artifacts:/app/ml/artifacts:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  api:
+    build:
+      context: ./backend
+    image: neutral-ground/api:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ml-serve:
+        condition: service_started
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-neutral_ground}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      ML_SERVE_URL: http://ml-serve:8000
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8080:8080"
+
+  # One-off loader: python -m ml.pipeline.publish against the compose database.
+  # Start the api first so Flyway has created the ng schema.
+  publish:
+    profiles: ["tools"]
+    image: neutral-ground/ml-serve:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-neutral_ground}
+    volumes:
+      - ./ml/artifacts:/app/ml/artifacts:ro
+      - ./data-pipeline/data:/app/data-pipeline/data:ro
+    command: ["python", "-m", "ml.pipeline.publish", "--tournament", "wc2026"]
+
+  # Frontend, once it reads from the API (FE-11). Uncomment after adding frontend/Dockerfile.
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     args:
+  #       VITE_API_URL: http://localhost:8080
+  #   depends_on:
+  #     - api
+  #   ports:
+  #     - "5173:80"
+
+volumes:
+  pgdata:
