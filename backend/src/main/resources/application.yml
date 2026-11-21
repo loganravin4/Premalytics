@@ -1,0 +1,77 @@
+spring:
+  application:
+    name: neutral-ground-api
+  # Optional .env at the repo root (one level up from backend/, the usual working directory).
+  config:
+    import: optional:file:../.env[.properties]
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:neutral_ground}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  flyway:
+    schemas: ng
+    default-schema: ng
+    create-schemas: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: ng
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=${READ_CACHE_TTL:5m}
+  jackson:
+    default-property-inclusion: always
+  mvc:
+    problemdetails:
+      enabled: false
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState,db
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+springdoc:
+  api-docs:
+    path: /api/docs
+  swagger-ui:
+    path: /api/docs/ui
+
+neutralground:
+  cors:
+    # Comma-separated list. No wildcard: list every frontend origin explicitly.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  inference:
+    base-url: ${ML_SERVE_URL:http://localhost:8000}
+    connect-timeout: ${ML_SERVE_CONNECT_TIMEOUT:2s}
+    read-timeout: ${ML_SERVE_READ_TIMEOUT:5s}
+  rate-limit:
+    # Token bucket per client IP, applied to POST /api/** only.
+    capacity: ${RATE_LIMIT_CAPACITY:30}
+    refill-per-minute: ${RATE_LIMIT_REFILL_PER_MINUTE:30}
+  read-cache:
+    # Cache-Control max-age on successful GET /api/** responses.
+    max-age: ${READ_CACHE_MAX_AGE:5m}
