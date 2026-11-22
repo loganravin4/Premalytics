@@ -126,8 +126,8 @@ Direction is in `PRODUCT.md`. The Premier League mock UI is replaced, not extend
 | FE-14 Match detail ✅ Done (PR #13) | Probability bar, predicted vs actual, model pick, what the model got wrong. | Every match has a page. |
 | FE-15 Nations ✅ Done (PR #13) | Team index (48 WC 2026 nations) and team page (their matches, model record on them). | |
 | FE-16 Method ✅ Done (PR #13) | Plain-language "how the model works and where it fails" page: data, features, splits, metrics, limits. | No claim the numbers don't support. |
-| FE-02 xG lab *(open from handoff)* | Pitch with draggable shot location → model xG from the XG-04 grid. Label: "model estimate, not official xG". | After XG-04. |
-| FE-03 Penalties lab *(open from handoff)* | Goal-mouth heatmap of conversion by zone. "Experimental" label. | After PEN-03. |
+| FE-02 xG lab ✅ Done (this PR) | Pitch with draggable shot location → model xG from the XG-04 grid. Label: "model estimate, not official xG". | After XG-04. |
+| FE-03 Penalties lab ✅ Done (this PR) | Goal-mouth heatmap of conversion by zone. "Experimental" label. | After PEN-03. |
 | FE-17 Simulator | Bracket odds from ML-07. | After ML-07. |
 | FE-18 Remove legacy ✅ Done (PR #13) | Delete EPL mocks, Players/PlayerDetail/Standings pages, unused components. | No dead routes. |
 | FE-19 Switch to the API | Read from the BE-04 endpoints behind `VITE_API_URL`, falling back to the static JSON. Shapes are in `backend/API.md`. | Needs the API hosted (see "Before launch"). |
@@ -158,8 +158,7 @@ Three lanes run in parallel: **frontend** (FE-10 → FE-16), **ML** (ML-01 → M
 
 ## 7. Next up (as of 2026-11-21)
 
-1. FE-02 xG lab and FE-03 penalties page (data files are ready).
-2. Before launch: `/launch-gate`, FE-20 contrast, then deploy the frontend as a static site.
-3. Hosting decision for the API, Postgres, and `ml/serve`; then FE-19.
-4. ML-07 simulator → FE-17, ML-08 confidence intervals, ML-09 dedupe (with the next retrain), ML-06 ablation after the martj42 stage-label fix.
-5. BRAND-06 (owner): rename the GitHub repo and local folder.
+1. Before launch: `/launch-gate`, FE-20 contrast, then deploy the frontend as a static site.
+2. Hosting decision for the API, Postgres, and `ml/serve`; then FE-19.
+3. ML-07 simulator → FE-17, ML-08 confidence intervals, ML-09 dedupe (with the next retrain), ML-06 ablation after the martj42 stage-label fix.
+4. BRAND-06 (owner): rename the GitHub repo and local folder.

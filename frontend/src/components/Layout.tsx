@@ -45,6 +45,8 @@ const NAV = [
   { to: '/', label: 'Volume', end: true },
   { to: '/wc2026', label: 'Matches', end: false },
   { to: '/nations', label: 'Nations', end: false },
+  { to: '/lab/xg', label: 'xG lab', end: false },
+  { to: '/lab/penalties', label: 'Penalties', end: false },
   { to: '/method', label: 'Method', end: false },
 ];
 

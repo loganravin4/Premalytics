@@ -1,0 +1,1122 @@
+{
+ "schema_version": 1,
+ "generated": "2026-11-21",
+ "run_id": "penalties_20261121_143626",
+ "label": "Experimental. Descriptive conversion rates from past tournament kicks, not a prediction.",
+ "source": "StatsBomb open data (international tournaments)",
+ "perspective": "Zones are from the taker's view: 'left' is the taker's left.",
+ "min_display_n": 20,
+ "default_scope": "mens",
+ "scopes": {
+  "mens": {
+   "n_kicks": 356,
+   "overall": {
+    "n": 356,
+    "goals": 247,
+    "conversion": 0.6938,
+    "ci95": [
+     0.6441,
+     0.7394
+    ]
+   },
+   "by_phase": [
+    {
+     "phase": "in_game",
+     "n": 115,
+     "goals": 82,
+     "conversion": 0.713,
+     "ci95": [
+      0.6245,
+      0.7878
+     ],
+     "share": 0.323,
+     "low_sample": false
+    },
+    {
+     "phase": "shootout",
+     "n": 241,
+     "goals": 165,
+     "conversion": 0.6846,
+     "ci95": [
+      0.6235,
+      0.74
+     ],
+     "share": 0.677,
+     "low_sample": false
+    }
+   ],
+   "zones": {
+    "rows": [
+     "high",
+     "mid",
+     "low"
+    ],
+    "cols": [
+     "left",
+     "center",
+     "right"
+    ],
+    "perspective": "taker",
+    "cells": [
+     [
+      {
+       "zone": "high_left",
+       "row": "high",
+       "col": "left",
+       "n": 23,
+       "share": 0.0646,
+       "goals": 17,
+       "saved": 0,
+       "missed": 6,
+       "conversion": 0.7391,
+       "ci95": [
+        0.5353,
+        0.8745
+       ],
+       "low_sample": false
+      },
+      {
+       "zone": "high_center",
+       "row": "high",
+       "col": "center",
+       "n": 10,
+       "share": 0.0281,
+       "goals": 3,
+       "saved": 0,
+       "missed": 7,
+       "conversion": 0.3,
+       "ci95": [
+        0.1078,
+        0.6032
+       ],
+       "low_sample": true
+      },
+      {
+       "zone": "high_right",
+       "row": "high",
+       "col": "right",
+       "n": 26,
+       "share": 0.073,
+       "goals": 21,
+       "saved": 0,
+       "missed": 5,
+       "conversion": 0.8077,
+       "ci95": [
+        0.6212,
+        0.9149
+       ],
+       "low_sample": false
+      }
+     ],
+     [
+      {
+       "zone": "mid_left",
+       "row": "mid",
+       "col": "left",
+       "n": 53,
+       "share": 0.1489,
+       "goals": 36,
+       "saved": 16,
+       "missed": 1,
+       "conversion": 0.6792,
+       "ci95": [
+        0.5452,
+        0.7891
+       ],
+       "low_sample": false
+      },
+      {
+       "zone": "mid_center",
+       "row": "mid",
+       "col": "center",
+       "n": 18,
+       "share": 0.0506,
+       "goals": 16,
+       "saved": 2,
+       "missed": 0,
+       "conversion": 0.8889,
+       "ci95": [
+        0.672,
+        0.969
+       ],
+       "low_sample": true
+      },
+      {
+       "zone": "mid_right",
+       "row": "mid",
+       "col": "right",
+       "n": 47,
+       "share": 0.132,
+       "goals": 33,
+       "saved": 12,
+       "missed": 2,
+       "conversion": 0.7021,
+       "ci95": [
+        0.5602,
+        0.8135
+       ],
+       "low_sample": false
+      }
+     ],
+     [
+      {
+       "zone": "low_left",
+       "row": "low",
+       "col": "left",
+       "n": 97,
+       "share": 0.2725,
+       "goals": 62,
+       "saved": 21,
+       "missed": 14,
+       "conversion": 0.6392,
+       "ci95": [
+        0.54,
+        0.7278
+       ],
+       "low_sample": false
+      },
+      {
+       "zone": "low_center",
+       "row": "low",
+       "col": "center",
+       "n": 15,
+       "share": 0.0421,
+       "goals": 14,
+       "saved": 1,
+       "missed": 0,
+       "conversion": 0.9333,
+       "ci95": [
+        0.7018,
+        0.9881
+       ],
+       "low_sample": true
+      },
+      {
+       "zone": "low_right",
+       "row": "low",
+       "col": "right",
+       "n": 67,
+       "share": 0.1882,
+       "goals": 45,
+       "saved": 20,
+       "missed": 2,
+       "conversion": 0.6716,
+       "ci95": [
+        0.5526,
+        0.7721
+       ],
+       "low_sample": false
+      }
+     ]
+    ]
+   },
+   "on_target_rate": 0.927,
+   "save_rate_on_target": 0.2182,
+   "by_foot": [
+    {
+     "taker_foot": "left",
+     "n": 84,
+     "goals": 57,
+     "conversion": 0.6786,
+     "ci95": [
+      0.5728,
+      0.7687
+     ],
+     "share": 0.236,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "n": 272,
+     "goals": 190,
+     "conversion": 0.6985,
+     "ci95": [
+      0.6415,
+      0.75
+     ],
+     "share": 0.764,
+     "low_sample": false
+    }
+   ],
+   "foot_x_side": [
+    {
+     "taker_foot": "left",
+     "foot_side": "across",
+     "n": 24,
+     "goals": 14,
+     "conversion": 0.5833,
+     "ci95": [
+      0.3883,
+      0.7553
+     ],
+     "share": 0.0674,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "left",
+     "foot_side": "center",
+     "n": 15,
+     "goals": 11,
+     "conversion": 0.7333,
+     "ci95": [
+      0.4805,
+      0.891
+     ],
+     "share": 0.0421,
+     "low_sample": true
+    },
+    {
+     "taker_foot": "left",
+     "foot_side": "natural",
+     "n": 45,
+     "goals": 32,
+     "conversion": 0.7111,
+     "ci95": [
+      0.5663,
+      0.8227
+     ],
+     "share": 0.1264,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "foot_side": "across",
+     "n": 95,
+     "goals": 67,
+     "conversion": 0.7053,
+     "ci95": [
+      0.607,
+      0.7875
+     ],
+     "share": 0.2669,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "foot_side": "center",
+     "n": 28,
+     "goals": 22,
+     "conversion": 0.7857,
+     "ci95": [
+      0.6046,
+      0.8979
+     ],
+     "share": 0.0787,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "foot_side": "natural",
+     "n": 149,
+     "goals": 101,
+     "conversion": 0.6779,
+     "ci95": [
+      0.5992,
+      0.7476
+     ],
+     "share": 0.4185,
+     "low_sample": false
+    }
+   ],
+   "foot_x_col": [
+    {
+     "taker_foot": "left",
+     "placement_col": "center",
+     "n": 15,
+     "goals": 11,
+     "conversion": 0.7333,
+     "ci95": [
+      0.4805,
+      0.891
+     ],
+     "share": 0.0421,
+     "low_sample": true
+    },
+    {
+     "taker_foot": "left",
+     "placement_col": "left",
+     "n": 24,
+     "goals": 14,
+     "conversion": 0.5833,
+     "ci95": [
+      0.3883,
+      0.7553
+     ],
+     "share": 0.0674,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "left",
+     "placement_col": "right",
+     "n": 45,
+     "goals": 32,
+     "conversion": 0.7111,
+     "ci95": [
+      0.5663,
+      0.8227
+     ],
+     "share": 0.1264,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "placement_col": "center",
+     "n": 28,
+     "goals": 22,
+     "conversion": 0.7857,
+     "ci95": [
+      0.6046,
+      0.8979
+     ],
+     "share": 0.0787,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "placement_col": "left",
+     "n": 149,
+     "goals": 101,
+     "conversion": 0.6779,
+     "ci95": [
+      0.5992,
+      0.7476
+     ],
+     "share": 0.4185,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "placement_col": "right",
+     "n": 95,
+     "goals": 67,
+     "conversion": 0.7053,
+     "ci95": [
+      0.607,
+      0.7875
+     ],
+     "share": 0.2669,
+     "low_sample": false
+    }
+   ],
+   "shootout_order": [
+    {
+     "order_bucket": "1",
+     "n": 50,
+     "goals": 32,
+     "conversion": 0.64,
+     "ci95": [
+      0.5014,
+      0.7586
+     ],
+     "share": 0.2075,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "2",
+     "n": 50,
+     "goals": 35,
+     "conversion": 0.7,
+     "ci95": [
+      0.5625,
+      0.809
+     ],
+     "share": 0.2075,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "3",
+     "n": 50,
+     "goals": 31,
+     "conversion": 0.62,
+     "ci95": [
+      0.4815,
+      0.7414
+     ],
+     "share": 0.2075,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "4",
+     "n": 47,
+     "goals": 35,
+     "conversion": 0.7447,
+     "ci95": [
+      0.6049,
+      0.8475
+     ],
+     "share": 0.195,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "5",
+     "n": 30,
+     "goals": 21,
+     "conversion": 0.7,
+     "ci95": [
+      0.5212,
+      0.8334
+     ],
+     "share": 0.1245,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "6+",
+     "n": 14,
+     "goals": 11,
+     "conversion": 0.7857,
+     "ci95": [
+      0.5241,
+      0.9243
+     ],
+     "share": 0.0581,
+     "low_sample": true
+    }
+   ],
+   "shootout_pressure": [
+    {
+     "shootout_pressure": "can_win",
+     "n": 22,
+     "goals": 18,
+     "conversion": 0.8182,
+     "ci95": [
+      0.6148,
+      0.9269
+     ],
+     "share": 0.0913,
+     "low_sample": false
+    },
+    {
+     "shootout_pressure": "must_score",
+     "n": 24,
+     "goals": 17,
+     "conversion": 0.7083,
+     "ci95": [
+      0.5083,
+      0.8509
+     ],
+     "share": 0.0996,
+     "low_sample": false
+    },
+    {
+     "shootout_pressure": "neutral",
+     "n": 195,
+     "goals": 130,
+     "conversion": 0.6667,
+     "ci95": [
+      0.5978,
+      0.729
+     ],
+     "share": 0.8091,
+     "low_sample": false
+    }
+   ],
+   "in_game_state": [
+    {
+     "game_state": "leading",
+     "n": 22,
+     "goals": 17,
+     "conversion": 0.7727,
+     "ci95": [
+      0.5656,
+      0.8988
+     ],
+     "share": 0.1913,
+     "low_sample": false
+    },
+    {
+     "game_state": "level",
+     "n": 51,
+     "goals": 35,
+     "conversion": 0.6863,
+     "ci95": [
+      0.5497,
+      0.7967
+     ],
+     "share": 0.4435,
+     "low_sample": false
+    },
+    {
+     "game_state": "trailing",
+     "n": 42,
+     "goals": 30,
+     "conversion": 0.7143,
+     "ci95": [
+      0.5643,
+      0.8283
+     ],
+     "share": 0.3652,
+     "low_sample": false
+    }
+   ],
+   "shootouts": {
+    "n_shootouts": 25,
+    "first_kicker_won": 12,
+    "first_kicker_win_rate": 0.48,
+    "ci95": [
+     0.3003,
+     0.665
+    ]
+   }
+  },
+  "all": {
+   "n_kicks": 520,
+   "overall": {
+    "n": 520,
+    "goals": 354,
+    "conversion": 0.6808,
+    "ci95": [
+     0.6395,
+     0.7194
+    ]
+   },
+   "by_phase": [
+    {
+     "phase": "in_game",
+     "n": 192,
+     "goals": 136,
+     "conversion": 0.7083,
+     "ci95": [
+      0.6405,
+      0.768
+     ],
+     "share": 0.3692,
+     "low_sample": false
+    },
+    {
+     "phase": "shootout",
+     "n": 328,
+     "goals": 218,
+     "conversion": 0.6646,
+     "ci95": [
+      0.6119,
+      0.7136
+     ],
+     "share": 0.6308,
+     "low_sample": false
+    }
+   ],
+   "zones": {
+    "rows": [
+     "high",
+     "mid",
+     "low"
+    ],
+    "cols": [
+     "left",
+     "center",
+     "right"
+    ],
+    "perspective": "taker",
+    "cells": [
+     [
+      {
+       "zone": "high_left",
+       "row": "high",
+       "col": "left",
+       "n": 36,
+       "share": 0.0692,
+       "goals": 27,
+       "saved": 0,
+       "missed": 9,
+       "conversion": 0.75,
+       "ci95": [
+        0.5893,
+        0.8625
+       ],
+       "low_sample": false
+      },
+      {
+       "zone": "high_center",
+       "row": "high",
+       "col": "center",
+       "n": 16,
+       "share": 0.0308,
+       "goals": 7,
+       "saved": 0,
+       "missed": 9,
+       "conversion": 0.4375,
+       "ci95": [
+        0.231,
+        0.6682
+       ],
+       "low_sample": true
+      },
+      {
+       "zone": "high_right",
+       "row": "high",
+       "col": "right",
+       "n": 38,
+       "share": 0.0731,
+       "goals": 27,
+       "saved": 0,
+       "missed": 11,
+       "conversion": 0.7105,
+       "ci95": [
+        0.5524,
+        0.83
+       ],
+       "low_sample": false
+      }
+     ],
+     [
+      {
+       "zone": "mid_left",
+       "row": "mid",
+       "col": "left",
+       "n": 82,
+       "share": 0.1577,
+       "goals": 53,
+       "saved": 26,
+       "missed": 3,
+       "conversion": 0.6463,
+       "ci95": [
+        0.5384,
+        0.7411
+       ],
+       "low_sample": false
+      },
+      {
+       "zone": "mid_center",
+       "row": "mid",
+       "col": "center",
+       "n": 23,
+       "share": 0.0442,
+       "goals": 20,
+       "saved": 3,
+       "missed": 0,
+       "conversion": 0.8696,
+       "ci95": [
+        0.6787,
+        0.9546
+       ],
+       "low_sample": false
+      },
+      {
+       "zone": "mid_right",
+       "row": "mid",
+       "col": "right",
+       "n": 70,
+       "share": 0.1346,
+       "goals": 44,
+       "saved": 22,
+       "missed": 4,
+       "conversion": 0.6286,
+       "ci95": [
+        0.5115,
+        0.7323
+       ],
+       "low_sample": false
+      }
+     ],
+     [
+      {
+       "zone": "low_left",
+       "row": "low",
+       "col": "left",
+       "n": 144,
+       "share": 0.2769,
+       "goals": 95,
+       "saved": 31,
+       "missed": 18,
+       "conversion": 0.6597,
+       "ci95": [
+        0.5791,
+        0.7321
+       ],
+       "low_sample": false
+      },
+      {
+       "zone": "low_center",
+       "row": "low",
+       "col": "center",
+       "n": 19,
+       "share": 0.0365,
+       "goals": 18,
+       "saved": 1,
+       "missed": 0,
+       "conversion": 0.9474,
+       "ci95": [
+        0.7536,
+        0.9906
+       ],
+       "low_sample": true
+      },
+      {
+       "zone": "low_right",
+       "row": "low",
+       "col": "right",
+       "n": 92,
+       "share": 0.1769,
+       "goals": 63,
+       "saved": 24,
+       "missed": 5,
+       "conversion": 0.6848,
+       "ci95": [
+        0.5841,
+        0.7707
+       ],
+       "low_sample": false
+      }
+     ]
+    ]
+   },
+   "on_target_rate": 0.9115,
+   "save_rate_on_target": 0.2257,
+   "by_foot": [
+    {
+     "taker_foot": "left",
+     "n": 124,
+     "goals": 83,
+     "conversion": 0.6694,
+     "ci95": [
+      0.5826,
+      0.746
+     ],
+     "share": 0.2385,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "n": 396,
+     "goals": 271,
+     "conversion": 0.6843,
+     "ci95": [
+      0.637,
+      0.7282
+     ],
+     "share": 0.7615,
+     "low_sample": false
+    }
+   ],
+   "foot_x_side": [
+    {
+     "taker_foot": "left",
+     "foot_side": "across",
+     "n": 40,
+     "goals": 25,
+     "conversion": 0.625,
+     "ci95": [
+      0.4703,
+      0.7578
+     ],
+     "share": 0.0769,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "left",
+     "foot_side": "center",
+     "n": 19,
+     "goals": 14,
+     "conversion": 0.7368,
+     "ci95": [
+      0.5121,
+      0.8819
+     ],
+     "share": 0.0365,
+     "low_sample": true
+    },
+    {
+     "taker_foot": "left",
+     "foot_side": "natural",
+     "n": 65,
+     "goals": 44,
+     "conversion": 0.6769,
+     "ci95": [
+      0.5561,
+      0.778
+     ],
+     "share": 0.125,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "foot_side": "across",
+     "n": 135,
+     "goals": 90,
+     "conversion": 0.6667,
+     "ci95": [
+      0.5835,
+      0.7406
+     ],
+     "share": 0.2596,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "foot_side": "center",
+     "n": 39,
+     "goals": 31,
+     "conversion": 0.7949,
+     "ci95": [
+      0.6447,
+      0.8922
+     ],
+     "share": 0.075,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "foot_side": "natural",
+     "n": 222,
+     "goals": 150,
+     "conversion": 0.6757,
+     "ci95": [
+      0.6116,
+      0.7338
+     ],
+     "share": 0.4269,
+     "low_sample": false
+    }
+   ],
+   "foot_x_col": [
+    {
+     "taker_foot": "left",
+     "placement_col": "center",
+     "n": 19,
+     "goals": 14,
+     "conversion": 0.7368,
+     "ci95": [
+      0.5121,
+      0.8819
+     ],
+     "share": 0.0365,
+     "low_sample": true
+    },
+    {
+     "taker_foot": "left",
+     "placement_col": "left",
+     "n": 40,
+     "goals": 25,
+     "conversion": 0.625,
+     "ci95": [
+      0.4703,
+      0.7578
+     ],
+     "share": 0.0769,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "left",
+     "placement_col": "right",
+     "n": 65,
+     "goals": 44,
+     "conversion": 0.6769,
+     "ci95": [
+      0.5561,
+      0.778
+     ],
+     "share": 0.125,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "placement_col": "center",
+     "n": 39,
+     "goals": 31,
+     "conversion": 0.7949,
+     "ci95": [
+      0.6447,
+      0.8922
+     ],
+     "share": 0.075,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "placement_col": "left",
+     "n": 222,
+     "goals": 150,
+     "conversion": 0.6757,
+     "ci95": [
+      0.6116,
+      0.7338
+     ],
+     "share": 0.4269,
+     "low_sample": false
+    },
+    {
+     "taker_foot": "right",
+     "placement_col": "right",
+     "n": 135,
+     "goals": 90,
+     "conversion": 0.6667,
+     "ci95": [
+      0.5835,
+      0.7406
+     ],
+     "share": 0.2596,
+     "low_sample": false
+    }
+   ],
+   "shootout_order": [
+    {
+     "order_bucket": "1",
+     "n": 64,
+     "goals": 39,
+     "conversion": 0.6094,
+     "ci95": [
+      0.4869,
+      0.7194
+     ],
+     "share": 0.1951,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "2",
+     "n": 64,
+     "goals": 44,
+     "conversion": 0.6875,
+     "ci95": [
+      0.5661,
+      0.7877
+     ],
+     "share": 0.1951,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "3",
+     "n": 64,
+     "goals": 41,
+     "conversion": 0.6406,
+     "ci95": [
+      0.5182,
+      0.7471
+     ],
+     "share": 0.1951,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "4",
+     "n": 60,
+     "goals": 42,
+     "conversion": 0.7,
+     "ci95": [
+      0.5749,
+      0.801
+     ],
+     "share": 0.1829,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "5",
+     "n": 40,
+     "goals": 27,
+     "conversion": 0.675,
+     "ci95": [
+      0.5202,
+      0.7992
+     ],
+     "share": 0.122,
+     "low_sample": false
+    },
+    {
+     "order_bucket": "6+",
+     "n": 36,
+     "goals": 25,
+     "conversion": 0.6944,
+     "ci95": [
+      0.5314,
+      0.82
+     ],
+     "share": 0.1098,
+     "low_sample": false
+    }
+   ],
+   "shootout_pressure": [
+    {
+     "shootout_pressure": "can_win",
+     "n": 32,
+     "goals": 23,
+     "conversion": 0.7188,
+     "ci95": [
+      0.5463,
+      0.8444
+     ],
+     "share": 0.0976,
+     "low_sample": false
+    },
+    {
+     "shootout_pressure": "must_score",
+     "n": 36,
+     "goals": 27,
+     "conversion": 0.75,
+     "ci95": [
+      0.5893,
+      0.8625
+     ],
+     "share": 0.1098,
+     "low_sample": false
+    },
+    {
+     "shootout_pressure": "neutral",
+     "n": 260,
+     "goals": 168,
+     "conversion": 0.6462,
+     "ci95": [
+      0.5863,
+      0.7018
+     ],
+     "share": 0.7927,
+     "low_sample": false
+    }
+   ],
+   "in_game_state": [
+    {
+     "game_state": "leading",
+     "n": 50,
+     "goals": 34,
+     "conversion": 0.68,
+     "ci95": [
+      0.5419,
+      0.7924
+     ],
+     "share": 0.2604,
+     "low_sample": false
+    },
+    {
+     "game_state": "level",
+     "n": 86,
+     "goals": 62,
+     "conversion": 0.7209,
+     "ci95": [
+      0.6183,
+      0.8047
+     ],
+     "share": 0.4479,
+     "low_sample": false
+    },
+    {
+     "game_state": "trailing",
+     "n": 56,
+     "goals": 40,
+     "conversion": 0.7143,
+     "ci95": [
+      0.5852,
+      0.8158
+     ],
+     "share": 0.2917,
+     "low_sample": false
+    }
+   ],
+   "shootouts": {
+    "n_shootouts": 32,
+    "first_kicker_won": 17,
+    "first_kicker_win_rate": 0.5312,
+    "ci95": [
+     0.3645,
+     0.6913
+    ]
+   }
+  }
+ },
+ "model_check": {
+  "question": "Do pre-kick facts (phase, foot, shootout order and pressure) predict conversion better than the overall rate?",
+  "constant_log_loss": 0.62458,
+  "best_other": [
+   "phase_rate",
+   0.62387
+  ],
+  "any_beats_constant": false,
+  "n_scored_kicks": 362
+ }
+}

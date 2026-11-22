@@ -137,3 +137,14 @@ mkdirSync(outDir, { recursive: true });
 const write = (name, value) => writeFileSync(join(outDir, name), JSON.stringify(value, null, 1) + '\n');
 write('wc2026.json', { summary, matches, groups, teams });
 console.log(`wrote ${matches.length} matches, ${teams.length} teams, ${groups.length} groups from ${runs.at(-1)}`);
+
+// The labs read the ML exports; the distance/angle grid is dropped because the pitch grid covers the lab
+const exportsDir = join(root, 'ml', 'exports');
+const xg = JSON.parse(readFileSync(join(exportsDir, 'xg_grid.json'), 'utf8'));
+writeFileSync(
+  join(outDir, 'xg-lab.json'),
+  JSON.stringify({ label: xg.label, runId: xg.run_id, inputs: xg.inputs, pitch: xg.pitch, metrics: xg.metrics }) + '\n',
+);
+const pens = JSON.parse(readFileSync(join(exportsDir, 'penalty_aggregates.json'), 'utf8'));
+write('penalties.json', pens);
+console.log(`wrote xg-lab.json (${xg.run_id}) and penalties.json (${pens.run_id})`);
